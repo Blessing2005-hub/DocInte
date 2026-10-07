@@ -1,11 +1,9 @@
 import json
 
-import numpy as np
 import requests
-from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 
-from app.config import AI_SEARCH_RESULTS, EMBEDDING_MODEL, OLLAMA_HOST, OLLAMA_MODEL
+from app.config import AI_ENABLED, AI_SEARCH_RESULTS, EMBEDDING_MODEL, OLLAMA_HOST, OLLAMA_MODEL
 from app.database import Document, DocumentChunk
 from app.services.text_extraction_service import create_chunks, extract_text
 
@@ -15,6 +13,10 @@ _embedding_model = None
 def _get_model():
     global _embedding_model
     if _embedding_model is None:
+        # Imported here, not at the top of the file: importing sentence-transformers
+        # pulls in PyTorch, which costs hundreds of MB the moment the server starts.
+        from sentence_transformers import SentenceTransformer
+
         _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
     return _embedding_model
 
@@ -27,6 +29,11 @@ def index_document(db: Session, document: Document):
     goes stale; each document is embedded and stored the moment it
     lands, so it's searchable right away.
     """
+    if not AI_ENABLED:
+        document.indexed = False
+        db.commit()
+        return
+
     text = extract_text(document.file_path)
     chunks = create_chunks(text)
 
@@ -58,8 +65,10 @@ def search_chunks(db: Session, question: str, allowed_document_ids: set, top_k: 
     document the asking user isn't permitted to see, regardless of how
     semantically relevant that document's content might be.
     """
-    if not allowed_document_ids:
+    if not AI_ENABLED or not allowed_document_ids:
         return []
+
+    import numpy as np
 
     rows = (
         db.query(DocumentChunk, Document.filename)
@@ -87,6 +96,9 @@ def search_chunks(db: Session, question: str, allowed_document_ids: set, top_k: 
 
 
 def generate_answer(question: str, results: list) -> str:
+    if not AI_ENABLED:
+        return "The AI assistant is turned off on this server. Everything else in DocIntel works as normal."
+
     if not results:
         return (
             "I couldn't find anything relevant in the documents you have access to. "
