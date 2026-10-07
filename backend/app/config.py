@@ -36,3 +36,9 @@ OLLAMA_MODEL = os.environ.get("DOCINTEL_AI_MODEL", "qwen2.5:7b-instruct")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 AI_SEARCH_RESULTS = 5
+
+# Set DOCINTEL_AI_ENABLED=false on small hosts (e.g. a 512 MB free tier).
+# The AI libraries (PyTorch) alone need more memory than that. With it off,
+# documents are still uploaded, shared, edited and versioned as normal - they
+# just aren't indexed for the AI assistant, which then says it is turned off.
+AI_ENABLED = os.environ.get("DOCINTEL_AI_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
