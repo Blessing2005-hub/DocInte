@@ -1,0 +1,31 @@
+:root {
+  --bg: #F6F6F3;
+  --surface: #FFFFFF;
+  --surface-alt: #EFEEE8;
+  --border: #E1DFD5;
+
+  --text-primary: #1E241F;
+  --text-secondary: #63695F;
+  --text-tertiary: #9AA098;
+
+  --accent: #1F6F5C;
+  --accent-hover: #175647;
+  --accent-bg: #E4F1EC;
+
+  --gold: #B8873B;
+  --gold-bg: #F6EEDF;
+  --danger: #A8433B;
+  --danger-bg: #F5E7E5;
+  --blue: #5A6BB0;
+  --blue-bg: #EBEEF9;
+
+  --font-display: 'Libre Franklin', 'Segoe UI', sans-serif;
+  --font-body: 'Inter', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --rail-width: 220px;
+  --topbar-height: 60px;
+}
