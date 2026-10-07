@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.bootstrap import ensure_bootstrap_admin
 from app.config import CORS_ORIGINS
 from app.database import init_db
 from app.routers import admin, ai, auth, departments, documents, share
@@ -23,6 +24,7 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     init_db()
+    ensure_bootstrap_admin()
 
 
 @app.get("/api/health")
