@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ from app.services.permission_service import (
     can_restore_version,
     can_view_document,
 )
+from app.services.preview_service import PreviewUnavailable, build_preview
 from app.services.storage_service import delete_file, save_upload
 from app.services.versioning_service import notify_of_edit, record_initial_version
 
@@ -218,14 +219,38 @@ def upload_document(
 
 
 @router.get("/library", response_model=List[DocumentOut])
-def list_library(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    docs = db.query(Document).filter(Document.upload_type == "library").order_by(Document.upload_date.desc()).all()
+def list_library(
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    docs = (
+        db.query(Document)
+        .filter(Document.upload_type == "library")
+        .order_by(Document.upload_date.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return [_to_out(db, user, d) for d in docs]
 
 
 @router.get("/mine", response_model=List[DocumentOut])
-def list_mine(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    docs = db.query(Document).filter(Document.uploader_id == user.id).order_by(Document.upload_date.desc()).all()
+def list_mine(
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    docs = (
+        db.query(Document)
+        .filter(Document.uploader_id == user.id)
+        .order_by(Document.upload_date.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return [_to_out(db, user, d) for d in docs]
 
 
@@ -234,13 +259,25 @@ def search_documents(q: str, db: Session = Depends(get_db), user: User = Depends
     if not q.strip():
         return []
 
-    candidates = db.query(Document).filter(Document.filename.ilike(f"%{q}%")).all()
-    visible = [d for d in candidates if can_view_document(db, user, d)]
+    # Newest matches first; stop after a sensible number instead of loading everything.
+    candidates = (
+        db.query(Document)
+        .filter(Document.filename.ilike(f"%{q.strip()}%"))
+        .order_by(Document.upload_date.desc())
+        .limit(500)
+        .all()
+    )
+    visible = [d for d in candidates if can_view_document(db, user, d)][:100]
     return [_to_out(db, user, d) for d in visible]
 
 
 @router.get("/{document_id}/download")
-def download_document(document_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def download_document(
+    document_id: str,
+    preview: bool = False,   # the viewer passes preview=true so it is logged as a preview
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     document = _get_document_or_404(db, document_id)
 
     if not can_view_document(db, user, document):
@@ -249,10 +286,31 @@ def download_document(document_id: str, db: Session = Depends(get_db), user: Use
     if not os.path.exists(document.file_path):
         raise HTTPException(status_code=404, detail="File is missing from storage.")
 
-    db.add(AccessLog(user_id=user.id, action="DOWNLOAD", detail=document.filename))
+    db.add(AccessLog(user_id=user.id, action="PREVIEW" if preview else "DOWNLOAD", detail=document.filename))
     db.commit()
 
     return FileResponse(document.file_path, filename=document.filename)
+
+
+@router.get("/{document_id}/preview-data")
+def preview_data(document_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Readable preview of Word / Excel / PowerPoint files, built on the server."""
+    document = _get_document_or_404(db, document_id)
+
+    if not can_view_document(db, user, document):
+        raise HTTPException(status_code=403, detail="You don't have access to this document.")
+
+    if not os.path.exists(document.file_path):
+        raise HTTPException(status_code=404, detail="File is missing from storage.")
+
+    try:
+        data = build_preview(document.file_path, document.file_type)
+    except PreviewUnavailable as exc:
+        raise HTTPException(status_code=415, detail=str(exc))
+
+    db.add(AccessLog(user_id=user.id, action="PREVIEW", detail=document.filename))
+    db.commit()
+    return data
 
 
 @router.post("/{document_id}/versions", response_model=DocumentOut)
