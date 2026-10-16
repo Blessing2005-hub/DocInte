@@ -8,10 +8,23 @@ function kindOf(filename) {
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) return 'image';
   if (['txt', 'csv', 'md', 'json', 'log'].includes(ext)) return 'text';
   if (ext === 'docx') return 'docx';
+  if (['xlsx', 'pptx', 'doc', 'xls', 'ppt'].includes(ext)) return 'server'; // read on the server
   return 'none';
 }
 
-const MIME = { pdf: 'application/pdf' };
+function authHeaders() {
+  return { Authorization: `Bearer ${localStorage.getItem('docintel_token')}` };
+}
+
+async function loadServerPreview(documentId) {
+  const res = await fetch(`${BASE_URL}/api/documents/${documentId}/preview-data`, { headers: authHeaders() });
+  if (!res.ok) {
+    let detail = 'Could not load a preview.';
+    try { detail = (await res.json()).detail || detail; } catch { /* ignore */ }
+    throw new Error(detail);
+  }
+  return res.json();
+}
 
 export default function DocPreview({ row }) {
   const [open, setOpen] = useState(false);
@@ -37,51 +50,121 @@ export default function DocPreview({ row }) {
   );
 }
 
+function SheetsView({ data }) {
+  const [tab, setTab] = useState(0);
+  const sheet = data.sheets[tab] || { rows: [] };
+  const width = Math.max(1, ...sheet.rows.map((r) => r.length));
+  return (
+    <div className="pv-sheets">
+      <div className="pv-tabs">
+        {data.sheets.map((s, i) => (
+          <button key={i} className={i === tab ? 'on' : ''} onClick={() => setTab(i)}>{s.name}</button>
+        ))}
+      </div>
+      {sheet.rows.length === 0 ? (
+        <p className="pv-msg">This sheet is empty.</p>
+      ) : (
+        <div className="pv-table-wrap">
+          <table className="pv-table">
+            <tbody>
+              {sheet.rows.map((r, ri) => (
+                <tr key={ri}>
+                  {Array.from({ length: width }).map((_, ci) => (
+                    <td key={ci}>{r[ci] ?? ''}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {(sheet.truncated || data.more_sheets) && (
+        <p className="pv-note">Showing the first part only{data.more_sheets ? ' (and the first sheets)' : ''}. Download to see everything.</p>
+      )}
+    </div>
+  );
+}
+
+function SlidesView({ data }) {
+  return (
+    <div className="pv-slides">
+      {data.slides.map((s) => (
+        <div key={s.number} className="pv-slide">
+          <div className="pv-slide-no">Slide {s.number}</div>
+          {s.lines.length === 0 ? <p className="pv-faint">(no text on this slide)</p> : s.lines.map((l, i) => <p key={i}>{l}</p>)}
+        </div>
+      ))}
+      {data.more && <p className="pv-note">Showing the first slides only. Download to see everything.</p>}
+    </div>
+  );
+}
+
 function PreviewWindow({ row, kind, onClose }) {
   const [state, setState] = useState(kind === 'none' ? 'unsupported' : 'loading'); // loading | ready | error | unsupported
   const [url, setUrl] = useState(null);
   const [text, setText] = useState('');
+  const [server, setServer] = useState(null);
   const [errMsg, setErrMsg] = useState('');
+  const [note, setNote] = useState('');
   const docxRef = useRef(null);
 
   useEffect(() => {
     if (kind === 'none') return undefined;
-    let revoked = false;
+    let cancelled = false;
     let objectUrl = null;
+
+    async function fetchBlob() {
+      const res = await fetch(`${BASE_URL}/api/documents/${row.documentId}/download?preview=true`, { headers: authHeaders() });
+      if (!res.ok) throw new Error('Could not load this document.');
+      return res.blob();
+    }
+
     (async () => {
       try {
-        const token = localStorage.getItem('docintel_token');
-        const res = await fetch(`${BASE_URL}/api/documents/${row.documentId}/download`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error('Could not load this document.');
-        const blob = await res.blob();
-        if (revoked) return;
+        if (kind === 'server') {
+          const data = await loadServerPreview(row.documentId);
+          if (cancelled) return;
+          setServer(data);
+          setState('ready');
+          return;
+        }
+
+        const blob = await fetchBlob();
+        if (cancelled) return;
+
         if (kind === 'text') {
           setText(await blob.text());
+          setState('ready');
         } else if (kind === 'docx') {
-          const { renderAsync } = await import('docx-preview');
-          setState('ready'); // show the container first so it exists
+          setState('ready'); // show the container so it exists before drawing into it
           await new Promise((r) => setTimeout(r, 0));
-          if (docxRef.current) {
+          try {
+            const { renderAsync } = await import('docx-preview');
+            if (cancelled || !docxRef.current) return;
             docxRef.current.innerHTML = '';
             await renderAsync(blob, docxRef.current, undefined, { inWrapper: true, ignoreWidth: false });
+          } catch {
+            // The page-style viewer failed: fall back to the plain readable version.
+            const data = await loadServerPreview(row.documentId);
+            if (cancelled) return;
+            setServer(data);
+            setNote('Showing a simple text version of this document.');
           }
-          return;
         } else {
-          objectUrl = URL.createObjectURL(MIME[kind] ? new Blob([blob], { type: MIME[kind] }) : blob);
+          objectUrl = URL.createObjectURL(kind === 'pdf' ? new Blob([blob], { type: 'application/pdf' }) : blob);
           setUrl(objectUrl);
+          setState('ready');
         }
-        setState('ready');
       } catch (e) {
-        if (!revoked) {
+        if (!cancelled) {
           setErrMsg(e.message || 'Preview failed.');
           setState('error');
         }
       }
     })();
+
     return () => {
-      revoked = true;
+      cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [row.documentId, row.version, kind]);
@@ -96,11 +179,15 @@ function PreviewWindow({ row, kind, onClose }) {
         <div className="pv-body">
           {state === 'loading' && <p className="pv-msg">Loading preview…</p>}
           {state === 'error' && <p className="pv-msg">{errMsg}</p>}
-          {state === 'unsupported' && <p className="pv-msg">A preview isn't available for this file type yet. Use Download to open it.</p>}
+          {state === 'unsupported' && <p className="pv-msg">A preview isn't available for this file type. Use Download to open it.</p>}
+          {note && <p className="pv-note">{note}</p>}
           {kind === 'pdf' && url && <iframe title="Preview" src={url} className="pv-frame" />}
           {kind === 'image' && url && <img alt={row.filename} src={url} className="pv-img" />}
           {kind === 'text' && state === 'ready' && <pre className="pv-text">{text}</pre>}
-          {kind === 'docx' && <div ref={docxRef} className="pv-docx" />}
+          {kind === 'docx' && !server && <div ref={docxRef} className="pv-docx" />}
+          {server && server.kind === 'sheets' && <SheetsView data={server} />}
+          {server && server.kind === 'slides' && <SlidesView data={server} />}
+          {server && server.kind === 'text' && <pre className="pv-text">{server.text || '(This document has no readable text.)'}</pre>}
         </div>
       </div>
       <style>{`
@@ -111,11 +198,24 @@ function PreviewWindow({ row, kind, onClose }) {
         .pv-close { height: 34px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font-weight: 600; cursor: pointer; }
         .pv-body { flex: 1; min-height: 0; overflow: auto; background: var(--surface-alt); }
         .pv-msg { padding: 40px 20px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+        .pv-note { padding: 10px 16px; font-size: 12px; color: var(--text-tertiary); }
+        .pv-faint { color: var(--text-tertiary); font-size: 12.5px; }
         .pv-frame { width: 100%; height: 100%; border: 0; background: white; }
         .pv-img { display: block; max-width: 100%; margin: 0 auto; }
-        .pv-text { padding: 16px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+        .pv-text { padding: 16px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; font-family: inherit; line-height: 1.6; }
         .pv-docx { padding: 8px 0; }
         .pv-docx .docx-wrapper { background: transparent !important; padding: 8px !important; }
+        .pv-tabs { display: flex; gap: 6px; padding: 10px 12px 0; flex-wrap: wrap; position: sticky; left: 0; }
+        .pv-tabs button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px 8px 0 0; padding: 6px 14px; font-size: 12.5px; cursor: pointer; }
+        .pv-tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .pv-table-wrap { overflow: auto; background: var(--surface); margin: 0 12px 12px; border: 1px solid var(--border); }
+        .pv-table { border-collapse: collapse; font-size: 12.5px; }
+        .pv-table td { border: 1px solid var(--border); padding: 5px 10px; white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+        .pv-table tr:first-child td { font-weight: 600; background: var(--surface-alt); }
+        .pv-slides { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+        .pv-slide { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+        .pv-slide p { font-size: 13.5px; line-height: 1.6; margin: 2px 0; }
+        .pv-slide-no { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
         @media (max-width: 768px) { .pv-overlay { padding: 0; } .pv-window { border-radius: 0; max-height: 100vh; } }
       `}</style>
     </div>
