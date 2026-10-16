@@ -9,7 +9,12 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from app.config import DATABASE_URL
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+_IS_SQLITE = DATABASE_URL.startswith("sqlite")
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if _IS_SQLITE else {},
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
@@ -148,6 +153,8 @@ def _add_missing_columns():
     existing docintel.db needs the new columns added in place. Safe to run
     on every startup: it only acts when a column is missing.
     """
+    if not _IS_SQLITE:
+        return  # a fresh PostgreSQL database is created complete by create_all()
     with engine.begin() as conn:
         doc_cols = _column_names(conn, "documents")
         if "department" not in doc_cols:
