@@ -1,23 +1,46 @@
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STORAGE_DIR = os.path.join(BASE_DIR, "storage")
+# Where uploaded files (and the SQLite file, if used) live. On a host with a
+# persistent disk, set DOCINTEL_STORAGE_DIR to the disk's mount path.
+STORAGE_DIR = os.environ.get("DOCINTEL_STORAGE_DIR") or os.path.join(BASE_DIR, "storage")
 UPLOADS_DIR = os.path.join(STORAGE_DIR, "uploads")
 DB_PATH = os.path.join(STORAGE_DIR, "docintel.db")
 
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+# Use PostgreSQL by setting DOCINTEL_DATABASE_URL (or DATABASE_URL) to the
+# connection address. Without it the app uses the local SQLite file.
+DATABASE_URL = os.environ.get("DOCINTEL_DATABASE_URL") or os.environ.get("DATABASE_URL") or f"sqlite:///{DB_PATH}"
+if DATABASE_URL.startswith("postgres://"):  # older style some hosts hand out
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
 
 # ---- Auth ----
-# In production, set JWT_SECRET via environment variable rather than
-# relying on this default.
-JWT_SECRET = os.environ.get("DOCINTEL_JWT_SECRET", "change-this-secret-before-deploying")
+# The secret signs every login token, so it must come from the environment.
+# The app refuses to start without a real one. For local testing only, set
+# DOCINTEL_ENV=dev to allow a built-in throwaway secret.
+_DEV_SECRET = "change-this-secret-before-deploying"
+JWT_SECRET = os.environ.get("DOCINTEL_JWT_SECRET", "").strip()
+if not JWT_SECRET or JWT_SECRET == _DEV_SECRET:
+    if os.environ.get("DOCINTEL_ENV", "").strip().lower() == "dev":
+        JWT_SECRET = _DEV_SECRET
+    else:
+        raise RuntimeError(
+            "DOCINTEL_JWT_SECRET is not set (or is the default). Set it to a long random "
+            "string in the environment. For local testing only, set DOCINTEL_ENV=dev."
+        )
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = 60 * 8  # 8-hour session
 
 # ---- CORS ----
-CORS_ORIGINS = os.environ.get("DOCINTEL_CORS_ORIGINS", "*").split(",")
+# Set DOCINTEL_CORS_ORIGINS to your website's address (comma-separated if more
+# than one), e.g. https://docintel-9425.onrender.com - then only that site can
+# talk to the API from a browser. Left unset, any site is allowed (testing only).
+CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("DOCINTEL_CORS_ORIGINS", "*").split(",") if o.strip()] or ["*"]
+
+# ---- Login protection ----
+LOGIN_MAX_FAILS = 5          # wrong passwords allowed...
+LOGIN_WINDOW_SECONDS = 15 * 60   # ...within this many seconds before a pause
 
 # ---- Uploads ----
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
