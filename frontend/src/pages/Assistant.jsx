@@ -55,20 +55,26 @@ export default function Assistant() {
       </div>
 
       <style>{`
-        .assistant-page { display: flex; flex-direction: column; height: 100%; padding: 0 24px; }
-        .assistant-head { padding: 18px 0 14px; }
+        .assistant-page { display: flex; flex-direction: column; height: calc(100vh - 140px); height: calc(100dvh - 140px); min-height: 360px; padding: 0 24px; }
+        .assistant-head { padding: 14px 0 8px; flex: 0 0 auto; }
         .assistant-head h1 { font-size: 19px; }
         .sub { color: var(--text-tertiary); font-size: 12.5px; margin-top: 4px; }
-        .chat-area { flex: 1; overflow-y: auto; padding: 12px 0; display: flex; flex-direction: column; gap: 12px; }
+        .chat-area { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px 0; display: flex; flex-direction: column; gap: 12px; }
         .empty-hint { color: var(--text-tertiary); font-size: 13px; text-align: center; margin-top: 60px; }
         .bubble { max-width: 640px; padding: 12px 16px; border-radius: 12px; font-size: 13.5px; line-height: 1.6; }
         .bubble.user { align-self: flex-end; background: var(--accent); color: white; }
         .bubble.ai { align-self: flex-start; background: var(--surface-alt); }
         .bubble.loading { color: var(--text-tertiary); font-style: italic; }
         .sources { margin-top: 8px; font-size: 11px; color: var(--text-tertiary); }
-        .ask-row { display: flex; gap: 10px; padding: 16px 0; border-top: 1px solid var(--border); }
-        .ask-row input { flex: 1; height: 46px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-alt); padding: 0 16px; }
+        .ask-row { flex: 0 0 auto; display: flex; gap: 10px; padding: 10px 0 12px; border-top: 1px solid var(--border); }
+        .ask-row input { flex: 1; min-width: 0; height: 42px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-alt); padding: 0 16px; }
         .ask-row input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+        @media (max-width: 768px) {
+          .assistant-page { padding: 0 14px; height: calc(100vh - 120px); height: calc(100dvh - 120px); }
+          .assistant-head h1 { font-size: 17px; }
+          .sub { display: none; }
+          .empty-hint { margin-top: 24px; }
+        }
       `}</style>
     </div>
   );
