@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import NewVersionModal from './NewVersionModal';
 import VersionHistoryModal from './VersionHistoryModal';
+import DocPreview from './DocPreview';
 
 const TYPE_BADGE = { library: 'library', private: 'private', sent: 'sent' };
 const TYPE_ICON = { library: '📚', private: '🔒', sent: '📨' };
@@ -101,10 +102,7 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
 
           {selected.message && <div className="pane-message">"{selected.message}"</div>}
 
-          <div className="pane-preview">
-            <span>📄</span>
-            <span>Preview available after download</span>
-          </div>
+          <DocPreview key={`${selected.id}-${selected.version}`} row={selected} />
 
           {error && <p className="pane-error">{error}</p>}
           {notice && <p className="pane-ok">{notice}</p>}
