@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DocIntel</title>
+    <script>
+      /* Phones: shrink the whole app a little (like a normal app).
+         Change 0.82 to 0.75 for smaller, or 0.9 for bigger. */
+      (function () {
+        var s = 0.82;
+        if (window.screen.width <= 600) {
+          document
+            .querySelector('meta[name="viewport"]')
+            .setAttribute('content', 'width=device-width, initial-scale=' + s + ', minimum-scale=' + s + ', maximum-scale=5');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
