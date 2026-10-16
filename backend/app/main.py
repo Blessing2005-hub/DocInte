@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.bootstrap import ensure_bootstrap_admin
 from app.config import CORS_ORIGINS
 from app.database import init_db
-from app.routers import admin, ai, auth, departments, documents, share
+from app.routers import accounts, admin, ai, departments, documents, share
 
 app = FastAPI(
     title="DocIntel",
@@ -15,7 +15,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=False,  # the app uses Bearer tokens, not cookies
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -32,7 +32,7 @@ def health():
     return {"status": "ok"}
 
 
-app.include_router(auth.router)
+app.include_router(accounts.router)
 app.include_router(admin.router)
 app.include_router(departments.router)
 app.include_router(documents.router)
