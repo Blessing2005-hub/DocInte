@@ -112,14 +112,18 @@ export default function UploadModal({ onClose, onUploaded }) {
                   {peopleError ? (
                     <input value={receiverUsername} onChange={(e) => setReceiverUsername(e.target.value)} placeholder="Receiver username" />
                   ) : (
-                    <select value={receiverUsername} onChange={(e) => setReceiverUsername(e.target.value)}>
-                      <option value="">Select a person…</option>
-                      {people.map((p) => (
-                        <option key={p.id} value={p.username}>
-                          {p.full_name} ({p.username}{p.department ? ` · ${p.department}` : ''})
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search name or department…" />
+                      <div className="people-list">
+                        {shown.map((p) => (
+                          <label key={p.id} className={`person-row ${receiverUsername === p.username ? 'chosen' : ''}`}>
+                            <input type="radio" name="receiver" checked={receiverUsername === p.username} onChange={() => setReceiverUsername(p.username)} />
+                            <span>{p.full_name}<small>{p.username}{p.department ? ` · ${p.department}` : ''}</small></span>
+                          </label>
+                        ))}
+                        {shown.length === 0 && <p className="people-empty">No people found.</p>}
+                      </div>
+                    </>
                   )}
                 </div>
                 <div className="field">
@@ -174,10 +178,11 @@ export default function UploadModal({ onClose, onUploaded }) {
         .modal-actions { display: flex; gap: 10px; margin-top: 6px; }
         .modal-actions .btn { flex: 1; }
         .modal select { width: 100%; }
-        .people-list { max-height: 180px; overflow-y: auto; margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; }
+        .people-list { max-height: 160px; overflow-y: auto; margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; }
         .person-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
         .person-row:last-child { border-bottom: none; }
         .person-row:hover { background: var(--surface-alt); }
+        .person-row.chosen { background: var(--accent-soft, #e6f2ec); }
         .person-row input { width: auto; margin: 0; }
         .person-row span { display: flex; flex-direction: column; font-size: 13px; }
         .person-row small { color: var(--text-tertiary); font-size: 11.5px; }
