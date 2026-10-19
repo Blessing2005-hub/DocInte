@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.config import UPLOADS_DIR
@@ -27,7 +27,7 @@ from app.services.permission_service import (
     can_restore_version,
     can_view_document,
 )
-from app.services.preview_service import PreviewUnavailable, build_preview
+from app.services.preview_service import PreviewUnavailable, build_preview, render_pdf_page
 from app.services.storage_service import delete_file, save_upload
 from app.services.versioning_service import notify_of_edit, record_initial_version
 
@@ -311,6 +311,26 @@ def preview_data(document_id: str, db: Session = Depends(get_db), user: User = D
     db.add(AccessLog(user_id=user.id, action="PREVIEW", detail=document.filename))
     db.commit()
     return data
+
+
+@router.get("/{document_id}/preview-page/{page}")
+def preview_page(page: int, document_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """One page of a PDF as a picture, so it shows on phones that can't open PDFs."""
+    document = _get_document_or_404(db, document_id)
+
+    if not can_view_document(db, user, document):
+        raise HTTPException(status_code=403, detail="You don't have access to this document.")
+
+    if (document.file_type or "").lower() != ".pdf" or not os.path.exists(document.file_path):
+        raise HTTPException(status_code=404, detail="Page not available.")
+
+    try:
+        png = render_pdf_page(document.file_path, page - 1)
+    except PreviewUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception:
+        raise HTTPException(status_code=415, detail="This page couldn't be drawn.")
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=600"})
 
 
 @router.post("/{document_id}/versions", response_model=DocumentOut)
