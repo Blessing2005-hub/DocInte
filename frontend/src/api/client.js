@@ -35,6 +35,11 @@ export const api = {
   login: (ec_number, password) =>
     request('/api/auth/login', { method: 'POST', body: JSON.stringify({ ec_number, password }) }),
   me: () => request('/api/auth/me'),
+  forgotPassword: (ec_number, username) =>
+    request('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ ec_number, username }) }),
+  listResetRequests: () => request('/api/admin/password-requests'),
+  issueTempPassword: (id) => request(`/api/admin/password-requests/${id}/issue`, { method: 'POST' }),
+  dismissResetRequest: (id) => request(`/api/admin/password-requests/${id}`, { method: 'DELETE' }),
   getDirectory: () => request('/api/auth/directory'),
 
   listUsers: () => request('/api/admin/users'),
