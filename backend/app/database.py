@@ -46,6 +46,20 @@ class User(Base):
     department = Column(String, default="")
     status = Column(String, default="Active")  # Active | Disabled
     created_date = Column(DateTime, default=datetime.utcnow)
+    # True after an administrator issues a temporary password: the person must
+    # choose their own before carrying on.
+    must_change_password = Column(Boolean, default=False)
+
+
+class PasswordResetRequest(Base):
+    """Someone who forgot their password asks an administrator for a new one."""
+    __tablename__ = "password_reset_requests"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    requested_date = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="pending")  # pending | done | dismissed
+    user = relationship("User", foreign_keys=[user_id])
 
 
 class Document(Base):
@@ -167,6 +181,10 @@ def _add_missing_columns():
             conn.execute(text("ALTER TABLE documents ADD COLUMN updated_date DATETIME"))
         if "updated_by_id" not in doc_cols:
             conn.execute(text("ALTER TABLE documents ADD COLUMN updated_by_id VARCHAR"))
+
+        user_cols = _column_names(conn, "users")
+        if "must_change_password" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0"))
 
         shared_cols = _column_names(conn, "shared_documents")
         if "kind" not in shared_cols:
