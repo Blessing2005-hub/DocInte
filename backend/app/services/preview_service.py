@@ -1,12 +1,13 @@
 """
-Builds a simple, safe preview of Word / Excel / PowerPoint files on the server
-(the browser can't open those itself). Returns plain data; the page draws it.
+Builds a simple, safe preview of PDF / Word / Excel / PowerPoint files on the server
+(phone browsers can't open those themselves). Returns plain data; the page draws it.
 Old-format files (.doc, .xls, .ppt) can't be read this way.
 """
 MAX_SHEETS = 6
 MAX_ROWS = 200
 MAX_COLS = 30
 MAX_SLIDES = 80
+MAX_PDF_PAGES = 40
 MAX_TEXT = 200_000
 
 
@@ -69,15 +70,80 @@ def preview_pptx(path: str) -> dict:
     return {"kind": "slides", "slides": slides, "more": len(prs.slides) > MAX_SLIDES}
 
 
-def preview_docx_text(path: str) -> dict:
+def preview_docx_blocks(path: str) -> dict:
+    """Headings, paragraphs, bullet items and tables, kept in their original order."""
     from docx import Document
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
 
     doc = Document(path)
-    parts = [p.text for p in doc.paragraphs if p.text.strip()]
-    for table in doc.tables:
-        for row in table.rows:
-            parts.append(" | ".join(c.text.strip() for c in row.cells))
-    return {"kind": "text", "text": "\n\n".join(parts)[:MAX_TEXT]}
+    blocks = []
+    total = 0
+    for child in doc.element.body.iterchildren():
+        tag = child.tag.rsplit("}", 1)[-1]
+        if tag == "p":
+            p = Paragraph(child, doc)
+            text = p.text.strip()
+            if not text:
+                continue
+            style = (p.style.name if p.style is not None else "") or ""
+            if style.startswith("Heading") or style == "Title":
+                digits = "".join(ch for ch in style if ch.isdigit())
+                level = min(max(int(digits), 1), 3) if digits else 1
+                blocks.append({"type": "heading", "level": level, "text": text})
+            elif style.startswith("List"):
+                blocks.append({"type": "bullet", "text": text})
+            else:
+                blocks.append({"type": "p", "text": text})
+            total += len(text)
+        elif tag == "tbl":
+            table = Table(child, doc)
+            rows = []
+            for row in table.rows:
+                cells = []
+                seen = set()
+                for c in row.cells:
+                    if id(c._tc) in seen:   # merged cells repeat; show once
+                        continue
+                    seen.add(id(c._tc))
+                    cells.append(c.text.strip()[:200])
+                rows.append(cells)
+            blocks.append({"type": "table", "rows": rows[:100]})
+        if total > MAX_TEXT or len(blocks) > 3000:
+            break
+    return {"kind": "doc", "blocks": blocks}
+
+
+def _pdf_module():
+    try:
+        import pymupdf as m   # current name
+        return m
+    except ImportError:
+        import fitz as m      # older name
+        return m
+
+
+def preview_pdf(path: str) -> dict:
+    m = _pdf_module()
+    doc = m.open(path)
+    try:
+        total = len(doc)
+    finally:
+        doc.close()
+    return {"kind": "pdf", "pages": min(total, MAX_PDF_PAGES), "total": total}
+
+
+def render_pdf_page(path: str, index: int) -> bytes:
+    """One PDF page as a PNG picture (index starts at 0)."""
+    m = _pdf_module()
+    doc = m.open(path)
+    try:
+        if index < 0 or index >= min(len(doc), MAX_PDF_PAGES):
+            raise PreviewUnavailable("No such page.")
+        pix = doc[index].get_pixmap(matrix=m.Matrix(1.4, 1.4))
+        return pix.tobytes("png")
+    finally:
+        doc.close()
 
 
 def build_preview(path: str, ext: str) -> dict:
@@ -88,7 +154,9 @@ def build_preview(path: str, ext: str) -> dict:
         if ext == ".pptx":
             return preview_pptx(path)
         if ext == ".docx":
-            return preview_docx_text(path)
+            return preview_docx_blocks(path)
+        if ext == ".pdf":
+            return preview_pdf(path)
     except Exception as exc:  # corrupt or unusual file
         raise PreviewUnavailable("This file couldn't be read for preview. Download it to open it.") from exc
     raise PreviewUnavailable(
