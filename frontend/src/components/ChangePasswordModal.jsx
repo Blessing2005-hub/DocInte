@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
-export default function ChangePasswordModal({ onClose }) {
+export default function ChangePasswordModal({ onClose, forced = false }) {
   const { logout } = useAuth();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -38,9 +38,12 @@ export default function ChangePasswordModal({ onClose }) {
   }
 
   return (
-    <div className="pw-overlay" onClick={done ? undefined : onClose}>
+    <div className="pw-overlay" onClick={done || forced ? undefined : onClose}>
       <div className="pw-modal card" onClick={(e) => e.stopPropagation()}>
-        <h2>Change password</h2>
+        <h2>{forced ? 'Choose a new password' : 'Change password'}</h2>
+        {forced && !done && (
+          <p className="pw-note">You signed in with a temporary password. Choose your own new password to continue.</p>
+        )}
         {done ? (
           <>
             <p className="pw-ok">Your password has been changed. Please sign in again with the new password.</p>
@@ -49,7 +52,7 @@ export default function ChangePasswordModal({ onClose }) {
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="field">
-              <label htmlFor="pw-current">Current password</label>
+              <label htmlFor="pw-current">{forced ? 'Temporary password' : 'Current password'}</label>
               <input id="pw-current" type="password" value={current} onChange={(e) => setCurrent(e.target.value)}
                 autoComplete="current-password" required autoFocus />
             </div>
@@ -65,7 +68,7 @@ export default function ChangePasswordModal({ onClose }) {
             </div>
             {error && <p className="pw-error" role="alert">{error}</p>}
             <div className="pw-actions">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+              <button type="button" className="btn btn-secondary" onClick={onClose}>{forced ? 'Sign out' : 'Cancel'}</button>
               <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
             </div>
           </form>
@@ -78,6 +81,7 @@ export default function ChangePasswordModal({ onClose }) {
         .pw-modal { width: 100%; max-width: 400px; padding: 24px; background: var(--surface); }
         .pw-modal h2 { font-size: 17px; margin-bottom: 16px; }
         .pw-error { color: var(--danger); font-size: 13px; margin: 4px 0 12px; }
+        .pw-note { font-size: 13px; color: var(--text-secondary); margin: -6px 0 14px; }
         .pw-ok { font-size: 13.5px; margin-bottom: 16px; }
         .pw-actions { display: flex; justify-content: flex-end; gap: 10px; }
       `}</style>
