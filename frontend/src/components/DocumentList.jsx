@@ -11,7 +11,8 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
   // Keep only the id, and look the row up each render, so that after a
   // reload the pane shows the latest version number (editing is checked
   // against it) instead of a stale copy.
-  const [selectedId, setSelectedId] = useState(rows[0]?.id || null);
+  const isPhone = () => typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 820px)').matches;
+  const [selectedId, setSelectedId] = useState(() => (isPhone() ? null : rows[0]?.id || null));
   const selected = rows.find((r) => r.id === selectedId) || null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -83,6 +84,7 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
 
       {selected && (
         <div className="pane">
+          <button className="pane-back" onClick={() => setSelectedId(null)}>← Back to list</button>
           <span className={`badge badge-${TYPE_BADGE[selected.uploadType] || 'library'}`}>{selected.uploadType}</span>
           <h2>{selected.filename}</h2>
           <div className="pane-meta">
@@ -109,7 +111,7 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
 
           <div className="pane-actions">
             <button className="pane-btn" onClick={() => handleDownload(selected)}>Download</button>
-            {allowDelete && (
+            {allowDelete && selected.canDelete !== false && (
               <button className="pane-btn danger" onClick={() => handleDelete(selected)} disabled={busy}>
                 Delete
               </button>
@@ -184,6 +186,20 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
         .pane-actions-more { margin-top: 10px; }
         .pane-btn.plain { background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); }
         .pane-btn.plain:hover { background: var(--surface-alt); }
+        .pane-back { display: none; }
+        .row-title-line { min-width: 0; }
+        @media (max-width: 820px) {
+          .doc-list-shell { display: block; height: auto; }
+          .list-head { padding: 14px 14px 8px; }
+          .row { padding: 12px 14px; gap: 10px; }
+          .row-date { width: auto; min-width: 44px; }
+          .row-from { display: none; }
+          .pane { position: fixed; top: 70px; left: 0; right: 0; bottom: 0; width: auto; z-index: 40;
+                  border-left: none; padding: 14px 16px 24px; overflow-y: auto; }
+          .pane-back { display: inline-block; border: none; background: none; color: var(--accent); font-weight: 600;
+                       font-size: 13px; padding: 4px 0 10px; cursor: pointer; }
+          .pane h2 { font-size: 15.5px; overflow-wrap: anywhere; }
+        }
       `}</style>
     </div>
   );
