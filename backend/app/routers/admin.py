@@ -1,5 +1,8 @@
 from typing import List, Optional
 
+import secrets
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -11,6 +14,7 @@ from app.database import (
     Document,
     DocumentPermission,
     DocumentVersion,
+    PasswordResetRequest,
     SharedDocument,
     User,
     get_db,
@@ -205,9 +209,74 @@ def reset_user_password(
     validate_new_password(payload.new_password)
 
     user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = True   # they must choose their own at next sign-in
     db.add(AccessLog(user_id=admin.id, action="PASSWORD_RESET", detail=f"{user.username} ({user.ec_number})"))
     db.commit()
     return {"reset": True}
+
+
+# ---- "I forgot my password" requests -------------------------------------
+
+_TEMP_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"  # no look-alike letters
+
+
+class ResetRequestOut(BaseModel):
+    id: str
+    user_id: str
+    full_name: str
+    ec_number: str
+    username: str
+    department: str = ""
+    requested_date: datetime
+
+
+@router.get("/password-requests", response_model=List[ResetRequestOut])
+def list_password_requests(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    rows = (
+        db.query(PasswordResetRequest, User)
+        .join(User, User.id == PasswordResetRequest.user_id)
+        .filter(PasswordResetRequest.status == "pending")
+        .order_by(PasswordResetRequest.requested_date.asc())
+        .all()
+    )
+    return [
+        ResetRequestOut(
+            id=r.id, user_id=u.id, full_name=u.full_name, ec_number=u.ec_number,
+            username=u.username, department=u.department or "", requested_date=r.requested_date,
+        )
+        for r, u in rows
+    ]
+
+
+@router.post("/password-requests/{request_id}/issue")
+def issue_temporary_password(request_id: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Give the person a random temporary password. It is shown once, here, and not stored."""
+    req = db.query(PasswordResetRequest).filter(
+        PasswordResetRequest.id == request_id, PasswordResetRequest.status == "pending"
+    ).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="That request is no longer open.")
+    user = db.query(User).filter(User.id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    temp = "".join(secrets.choice(_TEMP_CHARS) for _ in range(10))
+    user.password_hash = hash_password(temp)
+    user.must_change_password = True
+    req.status = "done"
+    db.add(AccessLog(user_id=admin.id, action="PASSWORD_RESET", detail=f"{user.username} ({user.ec_number}) via request"))
+    db.commit()
+    return {"temporary_password": temp, "full_name": user.full_name, "ec_number": user.ec_number}
+
+
+@router.delete("/password-requests/{request_id}")
+def dismiss_password_request(request_id: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    req = db.query(PasswordResetRequest).filter(PasswordResetRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Not found.")
+    req.status = "dismissed"
+    db.commit()
+    return {"dismissed": True}
 
 
 @router.delete("/users/{user_id}")
@@ -238,6 +307,7 @@ def delete_user(user_id: str, admin: User = Depends(require_admin), db: Session 
     # Remove what only mattered to this person; keep the activity log but
     # detach it from the account that is going away.
     db.query(DocumentPermission).filter(DocumentPermission.user_id == user.id).delete()
+    db.query(PasswordResetRequest).filter(PasswordResetRequest.user_id == user.id).delete()
     db.query(SharedDocument).filter(
         or_(SharedDocument.sender_id == user.id, SharedDocument.receiver_id == user.id)
     ).delete(synchronize_session=False)
