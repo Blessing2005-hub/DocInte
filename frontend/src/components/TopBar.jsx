@@ -136,7 +136,12 @@ export default function TopBar({
       </header>
       <div className="tb-stripe" />
 
-      {showPassword && <ChangePasswordModal onClose={() => setShowPassword(false)} />}
+      {(showPassword || user?.must_change_password) && (
+        <ChangePasswordModal
+          forced={!!user?.must_change_password}
+          onClose={user?.must_change_password ? logout : () => setShowPassword(false)}
+        />
+      )}
 
       <style>{`
         .topbar { position: sticky; top: 0; z-index: 50; height: 64px; display: flex; align-items: center; gap: 12px;
