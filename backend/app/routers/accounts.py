@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, hash_password, verify_password
-from app.database import AccessLog, User, get_db
+from app.database import AccessLog, PasswordResetRequest, User, get_db
 from app.dependencies import get_current_user
 from app.schemas import LoginRequest, LoginResponse, UserOut
 from app.services.login_limiter import check_allowed, client_address, record_failure, record_success
@@ -74,9 +74,53 @@ def change_password(
         raise HTTPException(status_code=400, detail="Choose a password different from your current one.")
 
     user.password_hash = hash_password(payload.new_password)
+    user.must_change_password = False
     db.add(AccessLog(user_id=user.id, action="PASSWORD_CHANGE", detail=""))
     db.commit()
     return {"changed": True}
+
+
+class ForgotPasswordRequest(BaseModel):
+    ec_number: str
+    username: str
+
+
+FORGOT_MESSAGE = (
+    "If those details match an account, your request has been sent to an administrator. "
+    "They will give you a temporary password."
+)
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Someone who can't sign in asks an administrator for a new password. The
+    reply is the same whether or not the details match, so this can't be used to
+    find out which EC numbers exist. Repeated tries are slowed down.
+    """
+    ec_number = payload.ec_number.strip()
+    username = payload.username.strip()
+    address = client_address(request)
+
+    check_allowed(f"forgot:{ec_number}", address)
+    record_failure(f"forgot:{ec_number}", address)  # every try counts towards the limit
+
+    user = (
+        db.query(User)
+        .filter(User.ec_number == ec_number, User.status == "Active")
+        .first()
+    )
+    if user and user.username.lower() == username.lower():
+        already = (
+            db.query(PasswordResetRequest)
+            .filter(PasswordResetRequest.user_id == user.id, PasswordResetRequest.status == "pending")
+            .first()
+        )
+        if not already:
+            db.add(PasswordResetRequest(user_id=user.id))
+            db.add(AccessLog(user_id=user.id, action="PASSWORD_RESET_REQUEST", detail=""))
+            db.commit()
+    return {"message": FORGOT_MESSAGE}
 
 
 class DirectoryEntry(BaseModel):
