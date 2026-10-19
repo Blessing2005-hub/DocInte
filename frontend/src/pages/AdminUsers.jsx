@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import ResetRequests from '../components/ResetRequests';
 
 const EMPTY_FORM = {
   ec_number: '',
@@ -209,6 +210,8 @@ export default function AdminUsers() {
           </button>
         </div>
       )}
+
+      <ResetRequests />
 
       {showForm && (
         <form
