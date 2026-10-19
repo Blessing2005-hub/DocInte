@@ -16,6 +16,7 @@ class UserOut(BaseModel):
     full_name: str
     role: str
     department: str
+    must_change_password: Optional[bool] = False
 
     class Config:
         from_attributes = True
