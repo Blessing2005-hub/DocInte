@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/ministry-logo.jpg';
+import { api } from '../api/client';
 
 export default function Login() {
   const { login } = useAuth();
@@ -10,6 +11,31 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  const [fUsername, setFUsername] = useState('');
+  const [fMessage, setFMessage] = useState(null);
+  const [fError, setFError] = useState(null);
+  const [fBusy, setFBusy] = useState(false);
+
+  async function handleForgot(e) {
+    e.preventDefault();
+    setFBusy(true);
+    setFError(null);
+    try {
+      const res = await api.forgotPassword(ecNumber.trim(), fUsername.trim());
+      setFMessage(res.message);
+    } catch (err) {
+      setFError(err.message || 'Could not send the request. Please try again.');
+    } finally {
+      setFBusy(false);
+    }
+  }
+
+  function openForgot() {
+    setForgot(true);
+    setFMessage(null);
+    setFError(null);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -34,6 +60,41 @@ export default function Login() {
           <div className="login-side-foot mono">Ministry of Industry and Commerce</div>
         </div>
 
+        {forgot ? (
+          <form className="login-form-col" onSubmit={handleForgot}>
+            <h2>Forgot your password?</h2>
+            <p className="login-sub">
+              Enter your EC number and username. An administrator will be asked to give you a temporary password.
+            </p>
+
+            {fMessage ? (
+              <>
+                <p className="login-ok">{fMessage}</p>
+                <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => setForgot(false)}>
+                  Back to sign in
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="field">
+                  <label htmlFor="f-ec">EC Number</label>
+                  <input id="f-ec" value={ecNumber} onChange={(e) => setEcNumber(e.target.value)} placeholder="EC1001" autoFocus />
+                </div>
+                <div className="field">
+                  <label htmlFor="f-user">Username</label>
+                  <input id="f-user" value={fUsername} onChange={(e) => setFUsername(e.target.value)} placeholder="your username" />
+                </div>
+
+                {fError && <p className="login-error">{fError}</p>}
+
+                <button className="btn btn-primary" style={{ width: '100%' }} disabled={fBusy || !ecNumber.trim() || !fUsername.trim()}>
+                  {fBusy ? 'Sending…' : 'Ask for a new password'}
+                </button>
+                <button type="button" className="login-link" onClick={() => setForgot(false)}>Back to sign in</button>
+              </>
+            )}
+          </form>
+        ) : (
         <form className="login-form-col" onSubmit={handleSubmit}>
           <h2>Sign in</h2>
           <p className="login-sub">Use your EC number and password to continue.</p>
@@ -52,7 +113,9 @@ export default function Login() {
           <button className="btn btn-primary" style={{ width: '100%' }} disabled={loading || !ecNumber || !password}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+          <button type="button" className="login-link" onClick={openForgot}>Forgot password?</button>
         </form>
+        )}
       </div>
 
       <style>{`
@@ -75,6 +138,8 @@ export default function Login() {
         .login-form-col h2 { font-size: 21px; margin-bottom: 6px; }
         .login-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 26px; }
         .login-error { color: var(--danger); font-size: 13px; margin-bottom: 14px; }
+        .login-ok { color: var(--accent); font-size: 13.5px; line-height: 1.5; margin-bottom: 18px; }
+        .login-link { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 14px; padding: 4px 0; align-self: flex-start; }
         @media (max-width: 700px) {
           .login-card { flex-direction: column; width: 420px; }
           .login-side { width: auto; }
