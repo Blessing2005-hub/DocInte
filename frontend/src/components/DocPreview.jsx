@@ -4,11 +4,10 @@ const BASE_URL = import.meta.env.VITE_API_URL || `${window.location.protocol}//$
 
 function kindOf(filename) {
   const ext = (filename.split('.').pop() || '').toLowerCase();
-  if (ext === 'pdf') return 'pdf';
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) return 'image';
   if (['txt', 'csv', 'md', 'json', 'log'].includes(ext)) return 'text';
-  if (ext === 'docx') return 'docx';
-  if (['xlsx', 'pptx', 'doc', 'xls', 'ppt'].includes(ext)) return 'server'; // read on the server
+  // PDF, Word, Excel and PowerPoint are read on the server, so they also work on phones.
+  if (['pdf', 'docx', 'xlsx', 'pptx', 'doc', 'xls', 'ppt'].includes(ext)) return 'server';
   return 'none';
 }
 
@@ -99,25 +98,105 @@ function SlidesView({ data }) {
   );
 }
 
+function PdfPage({ documentId, number }) {
+  const [src, setSrc] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const holder = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = null;
+    const node = holder.current;
+
+    async function load() {
+      try {
+        const res = await fetch(`${BASE_URL}/api/documents/${documentId}/preview-page/${number}`, { headers: authHeaders() });
+        if (!res.ok) throw new Error('page');
+        const blob = await res.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    }
+
+    // Draw each page only when it scrolls near the screen.
+    let observer = null;
+    if (node && 'IntersectionObserver' in window) {
+      observer = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          observer.disconnect();
+          load();
+        }
+      }, { rootMargin: '600px' });
+      observer.observe(node);
+    } else {
+      load();
+    }
+    return () => {
+      cancelled = true;
+      if (observer) observer.disconnect();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [documentId, number]);
+
+  return (
+    <div ref={holder} className="pv-pdfpage">
+      {src ? <img src={src} alt={`Page ${number}`} /> : <div className="pv-pdfwait">{failed ? `Page ${number} could not be drawn` : `Page ${number}…`}</div>}
+    </div>
+  );
+}
+
+function PdfView({ documentId, data }) {
+  return (
+    <div className="pv-pdf">
+      {Array.from({ length: data.pages }).map((_, i) => <PdfPage key={i} documentId={documentId} number={i + 1} />)}
+      {data.total > data.pages && <p className="pv-note">Showing the first {data.pages} of {data.total} pages. Download to see everything.</p>}
+    </div>
+  );
+}
+
+function DocView({ data }) {
+  return (
+    <div className="pv-doc">
+      {data.blocks.length === 0 && <p className="pv-faint">(This document has no readable text.)</p>}
+      {data.blocks.map((b, i) => {
+        if (b.type === 'heading') {
+          const Tag = `h${Math.min(b.level + 1, 4)}`;
+          return <Tag key={i}>{b.text}</Tag>;
+        }
+        if (b.type === 'bullet') return <p key={i} className="pv-bullet">• {b.text}</p>;
+        if (b.type === 'table') {
+          return (
+            <div key={i} className="pv-table-wrap pv-inline">
+              <table className="pv-table">
+                <tbody>
+                  {b.rows.map((r, ri) => (
+                    <tr key={ri}>{r.map((c, ci) => <td key={ci}>{c}</td>)}</tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+        return <p key={i}>{b.text}</p>;
+      })}
+    </div>
+  );
+}
+
 function PreviewWindow({ row, kind, onClose }) {
   const [state, setState] = useState(kind === 'none' ? 'unsupported' : 'loading'); // loading | ready | error | unsupported
   const [url, setUrl] = useState(null);
   const [text, setText] = useState('');
   const [server, setServer] = useState(null);
   const [errMsg, setErrMsg] = useState('');
-  const [note, setNote] = useState('');
-  const docxRef = useRef(null);
 
   useEffect(() => {
     if (kind === 'none') return undefined;
     let cancelled = false;
     let objectUrl = null;
-
-    async function fetchBlob() {
-      const res = await fetch(`${BASE_URL}/api/documents/${row.documentId}/download?preview=true`, { headers: authHeaders() });
-      if (!res.ok) throw new Error('Could not load this document.');
-      return res.blob();
-    }
 
     (async () => {
       try {
@@ -128,33 +207,17 @@ function PreviewWindow({ row, kind, onClose }) {
           setState('ready');
           return;
         }
-
-        const blob = await fetchBlob();
+        const res = await fetch(`${BASE_URL}/api/documents/${row.documentId}/download?preview=true`, { headers: authHeaders() });
+        if (!res.ok) throw new Error('Could not load this document.');
+        const blob = await res.blob();
         if (cancelled) return;
-
         if (kind === 'text') {
           setText(await blob.text());
-          setState('ready');
-        } else if (kind === 'docx') {
-          setState('ready'); // show the container so it exists before drawing into it
-          await new Promise((r) => setTimeout(r, 0));
-          try {
-            const { renderAsync } = await import('docx-preview');
-            if (cancelled || !docxRef.current) return;
-            docxRef.current.innerHTML = '';
-            await renderAsync(blob, docxRef.current, undefined, { inWrapper: true, ignoreWidth: false });
-          } catch {
-            // The page-style viewer failed: fall back to the plain readable version.
-            const data = await loadServerPreview(row.documentId);
-            if (cancelled) return;
-            setServer(data);
-            setNote('Showing a simple text version of this document.');
-          }
         } else {
-          objectUrl = URL.createObjectURL(kind === 'pdf' ? new Blob([blob], { type: 'application/pdf' }) : blob);
+          objectUrl = URL.createObjectURL(blob);
           setUrl(objectUrl);
-          setState('ready');
         }
+        setState('ready');
       } catch (e) {
         if (!cancelled) {
           setErrMsg(e.message || 'Preview failed.');
@@ -180,14 +243,12 @@ function PreviewWindow({ row, kind, onClose }) {
           {state === 'loading' && <p className="pv-msg">Loading preview…</p>}
           {state === 'error' && <p className="pv-msg">{errMsg}</p>}
           {state === 'unsupported' && <p className="pv-msg">A preview isn't available for this file type. Use Download to open it.</p>}
-          {note && <p className="pv-note">{note}</p>}
-          {kind === 'pdf' && url && <iframe title="Preview" src={url} className="pv-frame" />}
           {kind === 'image' && url && <img alt={row.filename} src={url} className="pv-img" />}
           {kind === 'text' && state === 'ready' && <pre className="pv-text">{text}</pre>}
-          {kind === 'docx' && !server && <div ref={docxRef} className="pv-docx" />}
+          {server && server.kind === 'pdf' && <PdfView documentId={row.documentId} data={server} />}
+          {server && server.kind === 'doc' && <DocView data={server} />}
           {server && server.kind === 'sheets' && <SheetsView data={server} />}
           {server && server.kind === 'slides' && <SlidesView data={server} />}
-          {server && server.kind === 'text' && <pre className="pv-text">{server.text || '(This document has no readable text.)'}</pre>}
         </div>
       </div>
       <style>{`
@@ -203,8 +264,15 @@ function PreviewWindow({ row, kind, onClose }) {
         .pv-frame { width: 100%; height: 100%; border: 0; background: white; }
         .pv-img { display: block; max-width: 100%; margin: 0 auto; }
         .pv-text { padding: 16px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; font-family: inherit; line-height: 1.6; }
-        .pv-docx { padding: 8px 0; }
-        .pv-docx .docx-wrapper { background: transparent !important; padding: 8px !important; }
+        .pv-pdf { padding: 10px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+        .pv-pdfpage { width: 100%; max-width: 820px; min-height: 200px; background: #fff; border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .pv-pdfpage img { display: block; width: 100%; height: auto; }
+        .pv-pdfwait { padding: 80px 16px; text-align: center; color: var(--text-tertiary); font-size: 12.5px; }
+        .pv-doc { max-width: 820px; margin: 12px auto; background: var(--surface); padding: 22px 26px; border: 1px solid var(--border); border-radius: 8px; line-height: 1.65; font-size: 14px; }
+        .pv-doc p { margin: 0 0 10px; overflow-wrap: anywhere; }
+        .pv-doc h2 { font-size: 20px; margin: 18px 0 8px; } .pv-doc h3 { font-size: 17px; margin: 16px 0 6px; } .pv-doc h4 { font-size: 15px; margin: 14px 0 6px; }
+        .pv-bullet { padding-left: 14px; }
+        .pv-inline { margin: 8px 0 14px; }
         .pv-tabs { display: flex; gap: 6px; padding: 10px 12px 0; flex-wrap: wrap; position: sticky; left: 0; }
         .pv-tabs button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px 8px 0 0; padding: 6px 14px; font-size: 12.5px; cursor: pointer; }
         .pv-tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
