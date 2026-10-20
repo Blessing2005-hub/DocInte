@@ -37,6 +37,13 @@ export const api = {
   me: () => request('/api/auth/me'),
   forgotPassword: (ec_number, username) =>
     request('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ ec_number, username }) }),
+  importUsers: (file, dryRun, createDepartments) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('dry_run', dryRun ? 'true' : 'false');
+    fd.append('create_departments', createDepartments ? 'true' : 'false');
+    return request('/api/admin/users/import', { method: 'POST', body: fd });
+  },
   listResetRequests: () => request('/api/admin/password-requests'),
   issueTempPassword: (id) => request(`/api/admin/password-requests/${id}/issue`, { method: 'POST' }),
   dismissResetRequest: (id) => request(`/api/admin/password-requests/${id}`, { method: 'DELETE' }),
