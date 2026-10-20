@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import ResetRequests from '../components/ResetRequests';
+import ImportUsers from '../components/ImportUsers';
 
 const EMPTY_FORM = {
   ec_number: '',
   username: '',
   full_name: '',
   department: '',
-  role: 'Employee',
+  role: 'User',
   password: '',
 };
 
@@ -213,6 +214,8 @@ export default function AdminUsers() {
 
       <ResetRequests />
 
+      <ImportUsers onImported={load} />
+
       {showForm && (
         <form
           className="card card-pad create-form"
@@ -283,7 +286,7 @@ export default function AdminUsers() {
                   setForm({ ...form, role: e.target.value })
                 }
               >
-                <option>Employee</option>
+                <option>User</option>
                 <option>Manager</option>
                 <option>Admin</option>
               </select>
