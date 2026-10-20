@@ -42,7 +42,7 @@ class User(Base):
     username = Column(String, unique=True, nullable=False, index=True)
     full_name = Column(String, nullable=False)
     password_hash = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="Employee")  # Employee | Admin
+    role = Column(String, nullable=False, default="User")  # User | Manager | Admin
     department = Column(String, default="")
     status = Column(String, default="Active")  # Active | Disabled
     created_date = Column(DateTime, default=datetime.utcnow)
@@ -207,6 +207,10 @@ def _seed_and_backfill():
             for n in names:
                 db.add(Department(name=n))
             db.commit()
+
+        # 1b. The old role name "Employee" is now "User".
+        db.query(User).filter(User.role == "Employee").update({"role": "User"}, synchronize_session=False)
+        db.commit()
 
         # 2. Make user departments match the list's exact spelling/casing.
         canonical = {d.name.lower(): d.name for d in db.query(Department).all()}
