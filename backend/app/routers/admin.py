@@ -1,16 +1,20 @@
 from typing import List, Optional
 
 import secrets
+
+import bcrypt
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import hash_password
 from app.database import (
     AccessLog,
+    Department,
     Document,
     DocumentPermission,
     DocumentVersion,
@@ -29,6 +33,7 @@ from app.schemas import (
 )
 from app.services.department_service import resolve_department
 from app.services.password_policy import validate_new_password
+from app.services.user_import_service import MAX_FILE_BYTES, check_file, temp_password
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -64,7 +69,8 @@ def create_user(payload: CreateUserRequest, admin: User = Depends(require_admin)
     if existing:
         raise HTTPException(status_code=409, detail="A user with that EC number or username already exists.")
 
-    if payload.role not in ("Employee", "Manager", "Admin"):
+    role = "User" if payload.role == "Employee" else payload.role   # "Employee" is the old name for "User"
+    if role not in ("User", "Manager", "Admin"):
         raise HTTPException(status_code=400, detail="Invalid role.")
 
     validate_new_password(payload.password)
@@ -78,13 +84,60 @@ def create_user(payload: CreateUserRequest, admin: User = Depends(require_admin)
         username=username,
         full_name=payload.full_name.strip(),
         password_hash=hash_password(payload.password),
-        role=payload.role,
+        role=role,
         department=department,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.post("/users/import")
+def import_users(
+    file: UploadFile = File(...),
+    dry_run: bool = Form(True),
+    create_departments: bool = Form(False),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Create many accounts from a spreadsheet. With dry_run=true it only checks the
+    file and reports every row; with dry_run=false it creates the rows that passed
+    and returns each person's temporary password (shown once, not stored).
+    """
+    data = file.file.read(MAX_FILE_BYTES + 1)
+    result = check_file(db, file.filename or "", data, create_departments)
+    if dry_run:
+        return result
+
+    created, skipped = [], []
+    try:
+        for name in result["new_departments"]:
+            db.add(Department(name=name))
+        for r in result["rows"]:
+            if r["status"] != "ok":
+                skipped.append({"row": r["row"], "ec_number": r["ec_number"], "full_name": r["full_name"], "message": r["message"]})
+                continue
+            pw = temp_password()
+            # A lighter bcrypt cost keeps a big import quick. These passwords are random,
+            # single-use, and replaced by each person at first sign-in.
+            hashed = bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt(rounds=10)).decode("utf-8")
+            db.add(User(
+                ec_number=r["ec_number"], username=r["username"], full_name=r["full_name"],
+                password_hash=hashed, role=r["role"] or "User", department=r["department"],
+                must_change_password=True,
+            ))
+            created.append({
+                "ec_number": r["ec_number"], "full_name": r["full_name"], "username": r["username"],
+                "department": r["department"], "role": r["role"] or "User", "temporary_password": pw,
+            })
+        db.add(AccessLog(user_id=admin.id, action="USER_IMPORT", detail=f"created {len(created)}, skipped {len(skipped)}"))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Someone with one of those EC numbers or usernames was added while you were importing. Check again.")
+    return {"created": created, "skipped": skipped}
 
 
 @router.patch("/users/{user_id}/status", response_model=UserOut)
