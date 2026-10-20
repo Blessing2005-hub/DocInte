@@ -33,7 +33,7 @@ class CreateUserRequest(BaseModel):
     username: str
     full_name: str
     password: str
-    role: str = "Employee"
+    role: str = "User"
     department: str = ""
 
 
