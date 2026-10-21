@@ -19,6 +19,7 @@ from app.database import (
     DocumentPermission,
     DocumentVersion,
     PasswordResetRequest,
+    SavedDocument,
     SharedDocument,
     User,
     get_db,
@@ -361,6 +362,7 @@ def delete_user(user_id: str, admin: User = Depends(require_admin), db: Session 
     # detach it from the account that is going away.
     db.query(DocumentPermission).filter(DocumentPermission.user_id == user.id).delete()
     db.query(PasswordResetRequest).filter(PasswordResetRequest.user_id == user.id).delete()
+    db.query(SavedDocument).filter(SavedDocument.user_id == user.id).delete()
     db.query(SharedDocument).filter(
         or_(SharedDocument.sender_id == user.id, SharedDocument.receiver_id == user.id)
     ).delete(synchronize_session=False)
