@@ -8,5 +8,6 @@ export function editFields(d) {
     updatedBy: d.updated_by_name || null,
     canEdit: !!d.can_edit,
     canRestore: !!d.can_restore,
+    canManageAccess: !!d.can_manage_access,
   };
 }
