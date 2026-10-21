@@ -93,6 +93,9 @@ export const api = {
     a.remove();
     window.URL.revokeObjectURL(url);
   },
+  getAccess: (id) => request(`/api/documents/${id}/access`),
+  setAccess: (id, usernames) =>
+    request(`/api/documents/${id}/access`, { method: 'PUT', body: JSON.stringify({ usernames }) }),
   deleteDocument: (id) => request(`/api/documents/${id}`, { method: 'DELETE' }),
 
   uploadVersion: (id, file, baseVersion, note) => {
