@@ -72,6 +72,7 @@ class DocumentOut(BaseModel):
     can_edit: bool = False
     edit_access: str = ""
     can_restore: bool = False
+    can_manage_access: bool = False
 
     class Config:
         from_attributes = True
@@ -100,6 +101,7 @@ class SharedDocumentOut(BaseModel):
     version: int = 1
     can_edit: bool = False
     can_restore: bool = False
+    can_manage_access: bool = False
 
     class Config:
         from_attributes = True
