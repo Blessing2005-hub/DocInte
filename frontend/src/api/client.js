@@ -124,11 +124,13 @@ export const api = {
     window.URL.revokeObjectURL(url);
   },
 
-  sendDocument: (file, receiverUsername, message) => {
+  sendDocument: (file, receiverUsername, message, options = {}) => {
     const form = new FormData();
     form.append('file', file);
     form.append('receiver_username', receiverUsername);
     form.append('message', message || '');
+    if (options.also && options.also.length) form.append('also_usernames', options.also.join(','));
+    if (options.publishLibrary) form.append('publish_library', 'true');
     return request('/api/share/send', { method: 'POST', body: form });
   },
   getInbox: () => request('/api/share/inbox'),
