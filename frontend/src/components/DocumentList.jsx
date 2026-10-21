@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import NewVersionModal from './NewVersionModal';
 import VersionHistoryModal from './VersionHistoryModal';
 import DocPreview from './DocPreview';
+import ManageAccessModal from './ManageAccessModal';
 
 const TYPE_BADGE = { library: 'library', private: 'private', sent: 'sent' };
 const TYPE_ICON = { library: '📚', private: '🔒', sent: '📨' };
@@ -19,6 +20,7 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
   const [notice, setNotice] = useState(null);
   const [showNewVersion, setShowNewVersion] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showAccess, setShowAccess] = useState(false);
 
   function selectRow(row) {
     setSelectedId(row.id);
@@ -122,6 +124,9 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
             {selected.canEdit && (
               <button className="pane-btn plain" onClick={() => setShowNewVersion(true)}>Upload new version</button>
             )}
+            {selected.canManageAccess && (
+              <button className="pane-btn plain" onClick={() => setShowAccess(true)}>Manage access</button>
+            )}
             <button className="pane-btn plain" onClick={() => setShowHistory(true)}>Version history</button>
           </div>
         </div>
@@ -136,6 +141,17 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
             onChanged && onChanged();
           }}
           onStale={() => onChanged && onChanged()}
+        />
+      )}
+
+      {selected && showAccess && (
+        <ManageAccessModal
+          row={selected}
+          onClose={() => setShowAccess(false)}
+          onSaved={(count) => {
+            setNotice(count ? `Access updated: ${count} ${count === 1 ? 'person' : 'people'} can open this document.` : 'Access updated: only you can open this document.');
+            onChanged && onChanged();
+          }}
         />
       )}
 
