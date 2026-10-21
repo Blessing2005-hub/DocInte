@@ -3,17 +3,16 @@ import { api } from '../api/client';
 import DocumentList from '../components/DocumentList';
 import { editFields } from '../utils/docFields';
 
-// Everything that is "yours": documents you uploaded or sent, plus documents
-// other people sent to you.
+// Documents you uploaded or sent, plus the ones you chose to save from your Inbox.
 export default function MyDocuments() {
   const [rows, setRows] = useState(null);
 
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const [mine, inbox] = await Promise.all([
+    const [mine, saved] = await Promise.all([
       api.listMine(),
-      api.getInbox().catch(() => []), // if this fails, still show your own uploads
+      api.listSaved().catch(() => []), // if this fails, still show your own uploads
     ]);
 
     const own = mine.map((d) => ({
@@ -27,32 +26,25 @@ export default function MyDocuments() {
       ...editFields(d),
     }));
 
-    // Received documents: one row per document (newest), skipping "edited" notices
-    // and anything you also uploaded yourself.
     const ownIds = new Set(mine.map((d) => d.id));
-    const seen = new Set();
-    const received = [];
-    for (const d of inbox) {
-      if (d.kind === 'edit' || ownIds.has(d.document_id) || seen.has(d.document_id)) continue;
-      seen.add(d.document_id);
-      received.push({
-        id: `recv-${d.id}`,
-        documentId: d.document_id,
+    const keptRows = saved
+      .filter((d) => !ownIds.has(d.id))
+      .map((d) => ({
+        id: `saved-${d.id}`,
+        documentId: d.id,
         filename: d.filename,
-        uploadType: 'sent',
-        badge: 'received',
-        person: d.sender_name,
+        uploadType: d.upload_type,
+        badge: 'saved',
+        person: d.uploader_name,
         personLabel: 'from',
-        snippet: d.message,
-        message: d.message,
-        date: d.sent_date,
+        date: d.upload_date,
         read: true,
         canDelete: false,
+        canUnsave: true,
         ...editFields(d),
-      });
-    }
+      }));
 
-    setRows([...own, ...received].sort((a, b) => new Date(b.date) - new Date(a.date)));
+    setRows([...own, ...keptRows].sort((a, b) => new Date(b.date) - new Date(a.date)));
   }
 
   function handleDeleted(row) {
@@ -65,7 +57,7 @@ export default function MyDocuments() {
     <DocumentList
       title="My Documents"
       rows={rows}
-      emptyText="Nothing here yet. Documents you upload, send or receive will show up here."
+      emptyText="Nothing here yet. Documents you upload, and ones you save from your Inbox, will show up here."
       allowDelete
       onDeleted={handleDeleted}
       onChanged={load}
