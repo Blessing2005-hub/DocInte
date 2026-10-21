@@ -37,6 +37,20 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
     }
   }
 
+  async function handleUnsave(row) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.unsaveDocument(row.documentId);
+      onDeleted && onDeleted(row);
+      if (selected?.documentId === row.documentId) setSelectedId(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDelete(row) {
     setBusy(true);
     setError(null);
@@ -114,6 +128,11 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
 
           <div className="pane-actions">
             <button className="pane-btn" onClick={() => handleDownload(selected)}>Download</button>
+            {selected.canUnsave && (
+              <button className="pane-btn danger" onClick={() => handleUnsave(selected)} disabled={busy}>
+                Remove from My Documents
+              </button>
+            )}
             {allowDelete && selected.canDelete !== false && (
               <button className="pane-btn danger" onClick={() => handleDelete(selected)} disabled={busy}>
                 Delete
