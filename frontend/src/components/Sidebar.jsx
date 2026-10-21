@@ -51,15 +51,6 @@ export function NavLinks({ onNavigate, unread = 0 }) {
 export default function Sidebar({ onUpload, onNavigate, unread = 0 }) {
   return (
     <div className="side">
-      <button
-        type="button"
-        className="side-upload"
-        onClick={onUpload}
-      >
-        <span aria-hidden="true">＋</span>
-        <span>Upload Document</span>
-      </button>
-
       <NavLinks onNavigate={onNavigate} unread={unread} />
 
       <style>{`
