@@ -16,6 +16,8 @@ from app.database import (
     DocumentChunk,
     DocumentPermission,
     DocumentVersion,
+    SavedDocument,
+    SharedDocument,
     User,
     get_db,
 )
@@ -538,6 +540,8 @@ def delete_document(document_id: str, db: Session = Depends(get_db), user: User 
     db.query(DocumentChunk).filter(DocumentChunk.document_id == document.id).delete()
 
     db.query(DocumentPermission).filter(DocumentPermission.document_id == document.id).delete()
+    db.query(SharedDocument).filter(SharedDocument.document_id == document.id).delete()
+    db.query(SavedDocument).filter(SavedDocument.document_id == document.id).delete()
     db.delete(document)
 
     db.add(AccessLog(user_id=user.id, action="DELETE", detail=document.filename))
