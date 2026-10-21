@@ -212,6 +212,22 @@ def _seed_and_backfill():
         db.query(User).filter(User.role == "Employee").update({"role": "User"}, synchronize_session=False)
         db.commit()
 
+        # 1c. Everyone already on a private document's access list should find it in their Inbox.
+        for perm in db.query(DocumentPermission).all():
+            doc = db.query(Document).filter(Document.id == perm.document_id).first()
+            if not doc or doc.upload_type != "private":
+                continue
+            has_row = (
+                db.query(SharedDocument.id)
+                .filter(SharedDocument.document_id == doc.id, SharedDocument.receiver_id == perm.user_id,
+                        SharedDocument.kind == "share")
+                .first()
+            )
+            if not has_row:
+                db.add(SharedDocument(document_id=doc.id, sender_id=doc.uploader_id, receiver_id=perm.user_id,
+                                      message="Shared with you privately.", kind="share"))
+        db.commit()
+
         # 2. Make user departments match the list's exact spelling/casing.
         canonical = {d.name.lower(): d.name for d in db.query(Department).all()}
         for u in db.query(User).all():
