@@ -15,7 +15,6 @@ import UploadModal from './components/UploadModal';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import Inbox from './pages/Inbox';
-import Sent from './pages/Sent';
 import MyDocuments from './pages/MyDocuments';
 import Library from './pages/Library';
 import Assistant from './pages/Assistant';
@@ -137,7 +136,7 @@ function ProtectedShell() {
             />
             <Route
               path="/sent"
-              element={<Sent key={`sent-${refreshKey}`} />}
+              element={<Navigate to="/inbox" replace />}
             />
             <Route
               path="/my-documents"
@@ -174,7 +173,7 @@ function ProtectedShell() {
       </div>
 
       <footer className="app-footer">
-        Ministry of Industry and Commerce
+        Ministry of Industry and Commerce – Trade Measures
       </footer>
 
       {message && (
