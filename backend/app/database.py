@@ -134,6 +134,16 @@ class SharedDocument(Base):
     kind = Column(String, nullable=False, default="share")
 
 
+class SavedDocument(Base):
+    """A document someone chose to keep in My Documents (e.g. one sent to them)."""
+    __tablename__ = "saved_documents"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    document_id = Column(String, ForeignKey("documents.id"), nullable=False, index=True)
+    saved_date = Column(DateTime, default=datetime.utcnow)
+
+
 class DocumentChunk(Base):
     """Text chunks used by the AI assistant's retrieval index."""
     __tablename__ = "document_chunks"
