@@ -8,7 +8,7 @@ import ManageAccessModal from './ManageAccessModal';
 const TYPE_BADGE = { library: 'library', private: 'private', sent: 'sent' };
 const TYPE_ICON = { library: '📚', private: '🔒', sent: '📨' };
 
-export default function DocumentList({ title, rows, emptyText, onDeleted, allowDelete, onChanged }) {
+export default function DocumentList({ title, rows, emptyText, onDeleted, allowDelete, onChanged, toolbar, totalCount }) {
   // Keep only the id, and look the row up each render, so that after a
   // reload the pane shows the latest version number (editing is checked
   // against it) instead of a stale copy.
@@ -56,8 +56,9 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
       <div className="doc-list">
         <div className="list-head">
           <h1>{title}</h1>
-          <span className="sub">{rows.length} document{rows.length === 1 ? '' : 's'}</span>
+          <span className="sub">{rows.length}{totalCount != null && totalCount !== rows.length ? ` of ${totalCount}` : ''} document{rows.length === 1 ? '' : 's'}</span>
         </div>
+        {toolbar}
 
         {rows.length === 0 ? (
           <div className="empty-state">{emptyText}</div>
