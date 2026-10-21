@@ -7,6 +7,7 @@ from app.database import AccessLog, Document, SharedDocument, User, get_db
 from app.dependencies import get_current_user
 from app.schemas import SharedDocumentOut
 from app.services.ai_service import index_document
+from app.services.access_service import can_manage_access
 from app.services.permission_service import can_edit_document, can_restore_version
 from app.services.storage_service import save_upload
 from app.services.versioning_service import record_initial_version
@@ -30,6 +31,7 @@ def _to_out(db, user, shared, doc, person_name):
         version=doc.version or 1,
         can_edit=can_edit_document(db, user, doc),
         can_restore=can_restore_version(user, doc),
+        can_manage_access=can_manage_access(user, doc),
     )
 
 
