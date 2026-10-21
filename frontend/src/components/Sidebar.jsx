@@ -8,7 +8,6 @@ export function NavLinks({ onNavigate, unread = 0 }) {
   const links = [
     { to: '/', label: 'Home', icon: 'home', end: true },
     { to: '/inbox', label: 'Inbox', icon: 'inbox', badge: unread },
-    { to: '/sent', label: 'Sent', icon: 'send' },
     { to: '/my-documents', label: 'My Documents', icon: 'file-text' },
     { to: '/library', label: 'Library', icon: 'library' },
     { to: '/assistant', label: 'AI Assistant', icon: 'sparkles' },
