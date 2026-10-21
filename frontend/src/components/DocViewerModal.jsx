@@ -64,7 +64,9 @@ export default function DocViewerModal({ row, onClose, onChanged }) {
             </button>
           )}
           {row.canEdit && <button className="btn btn-secondary" onClick={() => setShowNew(true)}>Upload new version</button>}
-          <button className="btn btn-secondary" onClick={() => setShowHistory(true)}>Version history</button>
+          {row.version > 1 && (
+            <button className="btn btn-secondary" onClick={() => setShowHistory(true)}>Version history</button>
+          )}
           {row.canManageAccess && <button className="btn btn-secondary" onClick={() => setShowAccess(true)}>Manage access</button>}
         </div>
       </div>
