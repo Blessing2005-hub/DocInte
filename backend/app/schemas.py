@@ -102,6 +102,12 @@ class SharedDocumentOut(BaseModel):
     can_edit: bool = False
     can_restore: bool = False
     can_manage_access: bool = False
+    # Used by the conversation view (empty on the older inbox/sent lists).
+    direction: str = ""          # "in" (sent to you) | "out" (you sent it)
+    person_username: str = ""
+    person_name: str = ""
+    person_department: str = ""
+    saved: bool = False
 
     class Config:
         from_attributes = True
