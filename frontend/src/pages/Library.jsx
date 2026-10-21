@@ -10,7 +10,19 @@ const DATE_OPTIONS = [
   { value: '365', label: 'Last year' },
 ];
 
+// Every file type the app accepts, so the filter always has choices.
+// Each group matches a list of extensions.
+const TYPE_GROUPS = [
+  { value: 'pdf', label: 'PDF', exts: ['.pdf'] },
+  { value: 'word', label: 'Word', exts: ['.doc', '.docx'] },
+  { value: 'excel', label: 'Excel', exts: ['.xls', '.xlsx'] },
+  { value: 'powerpoint', label: 'PowerPoint', exts: ['.ppt', '.pptx'] },
+  { value: 'image', label: 'Images', exts: ['.png', '.jpg', '.jpeg'] },
+  { value: 'text', label: 'Text', exts: ['.txt'] },
+];
+
 export default function Library() {
+  const [allDepartments, setAllDepartments] = useState([]);
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState('');
@@ -18,7 +30,12 @@ export default function Library() {
   const [type, setType] = useState('');
   const [when, setWhen] = useState('any');
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api.listDepartments()
+      .then((list) => setAllDepartments((Array.isArray(list) ? list : []).map((d) => d.name)))
+      .catch(() => {});
+  }, []);
 
   async function load() {
     try {
@@ -39,8 +56,10 @@ export default function Library() {
     }
   }
 
-  const departments = useMemo(() => [...new Set((rows || []).map((r) => r.department).filter(Boolean))].sort(), [rows]);
-  const types = useMemo(() => [...new Set((rows || []).map((r) => (r.fileType || '').toLowerCase()).filter(Boolean))].sort(), [rows]);
+  const departments = useMemo(
+    () => [...new Set([...allDepartments, ...(rows || []).map((r) => r.department).filter(Boolean)])].sort(),
+    [allDepartments, rows],
+  );
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -49,7 +68,12 @@ export default function Library() {
     return rows.filter((r) => {
       if (q && !`${r.filename} ${r.person || ''} ${r.department || ''}`.toLowerCase().includes(q)) return false;
       if (dept && r.department !== dept) return false;
-      if (type && (r.fileType || '').toLowerCase() !== type) return false;
+      if (type) {
+        const group = TYPE_GROUPS.find((g) => g.value === type);
+        const ext = (r.fileType || '').toLowerCase();
+        const dotted = ext.startsWith('.') ? ext : `.${ext}`;
+        if (!group || !group.exts.includes(dotted)) return false;
+      }
       if (cutoff && new Date(r.date).getTime() < cutoff) return false;
       return true;
     });
@@ -71,7 +95,7 @@ export default function Library() {
       </select>
       <select value={type} onChange={(e) => setType(e.target.value)} aria-label="File type">
         <option value="">All types</option>
-        {types.map((x) => <option key={x} value={x}>{x.replace('.', '').toUpperCase()}</option>)}
+        {TYPE_GROUPS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
       </select>
       <select value={when} onChange={(e) => setWhen(e.target.value)} aria-label="Date">
         {DATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
