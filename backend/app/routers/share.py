@@ -7,7 +7,7 @@ from app.database import AccessLog, Document, SavedDocument, SharedDocument, Use
 from app.dependencies import get_current_user
 from app.schemas import DocumentOut, SharedDocumentOut
 from app.services.ai_service import index_document
-from app.services.access_service import can_manage_access
+from app.services.access_service import can_manage_access, set_private_access
 from app.services.permission_service import can_edit_document, can_restore_version
 from app.services.storage_service import save_upload
 from app.services.versioning_service import record_initial_version
@@ -40,21 +40,39 @@ def send_document(
     file: UploadFile = File(...),
     receiver_username: str = Form(...),
     message: str = Form(""),
+    also_usernames: str = Form(""),
+    publish_library: bool = Form(False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    Send a document to a person, optionally to more people at once and/or
+    publish it to the Library. One document is stored however many people get it.
+    """
     receiver_username = receiver_username.strip()
+    wanted = [receiver_username] + [u.strip() for u in also_usernames.split(",") if u.strip()]
+    wanted = list(dict.fromkeys(wanted))  # drop duplicates, keep order
+    if len(wanted) > 100:
+        raise HTTPException(status_code=400, detail="You can send to at most 100 people at once.")
 
-    # This is the fix for the original's silent-orphan bug: the receiver
-    # must exist before anything is uploaded at all.
-    receiver = db.query(User).filter(User.username == receiver_username).first()
-    if not receiver:
-        raise HTTPException(status_code=404, detail=f"No user found with username '{receiver_username}'.")
-
-    if receiver.id == user.id:
-        raise HTTPException(status_code=400, detail="You can't send a document to yourself.")
+    # Every recipient must exist before anything is uploaded at all.
+    people = []
+    for name in wanted:
+        person = db.query(User).filter(User.username == name, User.status == "Active").first()
+        if not person:
+            raise HTTPException(status_code=404, detail=f"No active user found with username '{name}'.")
+        if person.id == user.id:
+            raise HTTPException(status_code=400, detail="You can't send a document to yourself.")
+        people.append(person)
 
     saved = save_upload(file)
+
+    if publish_library:
+        upload_type = "library"
+    elif len(people) > 1:
+        upload_type = "private"   # a chosen group: the access list can be changed later
+    else:
+        upload_type = "sent"
 
     document = Document(
         filename=saved["original_name"],
@@ -62,7 +80,7 @@ def send_document(
         file_path=saved["storage_path"],
         file_type=saved["file_type"],
         file_size=saved["file_size"],
-        upload_type="sent",
+        upload_type=upload_type,
         uploader_id=user.id,
         department=user.department or "",
     )
@@ -75,18 +93,28 @@ def send_document(
 
     index_document(db, document)
 
-    shared = SharedDocument(
-        document_id=document.id,
-        sender_id=user.id,
-        receiver_id=receiver.id,
-        message=message,
-    )
-    db.add(shared)
+    if upload_type == "private":
+        set_private_access(db, document, user, people)   # access list + one inbox entry each
+        if message:
+            for row in db.query(SharedDocument).filter(
+                SharedDocument.document_id == document.id, SharedDocument.kind == "share"
+            ).all():
+                row.message = message
+    else:
+        for person in people:
+            db.add(SharedDocument(document_id=document.id, sender_id=user.id, receiver_id=person.id, message=message))
 
-    db.add(AccessLog(user_id=user.id, action="SHARE", detail=f"{document.filename} -> {receiver.username}"))
+    for person in people:
+        db.add(AccessLog(user_id=user.id, action="SHARE", detail=f"{document.filename} -> {person.username}"))
+    if publish_library:
+        db.add(AccessLog(user_id=user.id, action="UPLOAD", detail=document.filename))
     db.commit()
-    db.refresh(shared)
 
+    shared = (
+        db.query(SharedDocument)
+        .filter(SharedDocument.document_id == document.id, SharedDocument.receiver_id == people[0].id)
+        .first()
+    )
     return _to_out(db, user, shared, document, user.full_name)
 
 
