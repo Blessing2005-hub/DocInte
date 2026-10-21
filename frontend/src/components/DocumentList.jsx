@@ -147,7 +147,9 @@ export default function DocumentList({ title, rows, emptyText, onDeleted, allowD
             {selected.canManageAccess && (
               <button className="pane-btn plain" onClick={() => setShowAccess(true)}>Manage access</button>
             )}
-            <button className="pane-btn plain" onClick={() => setShowHistory(true)}>Version history</button>
+            {selected.version > 1 && (
+              <button className="pane-btn plain" onClick={() => setShowHistory(true)}>Version history</button>
+            )}
           </div>
         </div>
       )}
