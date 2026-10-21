@@ -6,6 +6,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import UPLOADS_DIR
@@ -27,6 +28,7 @@ from app.services.permission_service import (
     can_restore_version,
     can_view_document,
 )
+from app.services.access_service import can_manage_access, current_people, set_private_access
 from app.services.preview_service import PreviewUnavailable, build_preview, render_pdf_page
 from app.services.storage_service import delete_file, save_upload
 from app.services.versioning_service import notify_of_edit, record_initial_version
@@ -50,6 +52,7 @@ def _to_out(db: Session, user: User, doc: Document) -> DocumentOut:
         can_edit=can_edit_document(db, user, doc),
         edit_access=effective_edit_access(doc),
         can_restore=can_restore_version(user, doc),
+        can_manage_access=can_manage_access(user, doc),
     )
 
 
@@ -205,8 +208,8 @@ def upload_document(
                 detail=f"Unknown username(s), not added: {', '.join(sorted(missing))}",
             )
 
-        for u in found_users:
-            db.add(DocumentPermission(document_id=document.id, user_id=u.id))
+        # Puts the document on each person's access list and in their Inbox.
+        set_private_access(db, document, user, found_users)
         db.commit()
 
     # Index immediately - no separate manual step, no stale cache.
@@ -269,6 +272,58 @@ def search_documents(q: str, db: Session = Depends(get_db), user: User = Depends
     )
     visible = [d for d in candidates if can_view_document(db, user, d)][:100]
     return [_to_out(db, user, d) for d in visible]
+
+
+class AccessUpdate(BaseModel):
+    usernames: List[str]
+
+
+def _access_payload(db: Session, document: Document) -> dict:
+    return {
+        "people": [
+            {"id": p.id, "username": p.username, "full_name": p.full_name, "department": p.department or ""}
+            for p in current_people(db, document)
+        ]
+    }
+
+
+@router.get("/{document_id}/access")
+def get_access(document_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Who is on a private document's access list. Only its uploader or an admin may look."""
+    document = _get_document_or_404(db, document_id)
+    if not can_manage_access(user, document):
+        raise HTTPException(status_code=403, detail="Only the uploader can manage who can see a private document.")
+    return _access_payload(db, document)
+
+
+@router.put("/{document_id}/access")
+def update_access(
+    document_id: str,
+    payload: AccessUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Replace the people who can open a private document."""
+    document = _get_document_or_404(db, document_id)
+    if not can_manage_access(user, document):
+        raise HTTPException(status_code=403, detail="Only the uploader can manage who can see a private document.")
+
+    usernames = {u.strip() for u in payload.usernames if u and u.strip()}
+    people = db.query(User).filter(User.username.in_(usernames), User.status == "Active").all() if usernames else []
+    missing = usernames - {p.username for p in people}
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Unknown or disabled user(s): {', '.join(sorted(missing))}")
+
+    added, removed = set_private_access(db, document, user, people)
+    if added or removed:
+        parts = []
+        if added:
+            parts.append("added " + ", ".join(sorted(added)))
+        if removed:
+            parts.append("removed " + ", ".join(sorted(removed)))
+        db.add(AccessLog(user_id=user.id, action="ACCESS_CHANGE", detail=f"{document.filename}: " + "; ".join(parts)))
+    db.commit()
+    return _access_payload(db, document)
 
 
 @router.get("/{document_id}/download")
