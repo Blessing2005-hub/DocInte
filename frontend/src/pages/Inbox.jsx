@@ -209,6 +209,10 @@ function Thread({ conversation, phone, onBack, onOpen, onSent }) {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [showOpts, setShowOpts] = useState(false);
+  const [extras, setExtras] = useState([]);          // more people to send the same file to
+  const [publish, setPublish] = useState(false);     // also publish to the Library
+  const [picking, setPicking] = useState(false);
   const endRef = useRef(null);
   const fileRef = useRef(null);
   const count = conversation.items.length;
@@ -220,7 +224,13 @@ function Thread({ conversation, phone, onBack, onOpen, onSent }) {
     setBusy(true);
     setError(null);
     try {
-      await api.sendDocument(file, conversation.username, message.trim());
+      await api.sendDocument(file, conversation.username, message.trim(), {
+        also: extras.map((p) => p.username),
+        publishLibrary: publish,
+      });
+      setExtras([]);
+      setPublish(false);
+      setShowOpts(false);
       setFile(null);
       setMessage('');
       if (fileRef.current) fileRef.current.value = '';
@@ -283,17 +293,65 @@ function Thread({ conversation, phone, onBack, onOpen, onSent }) {
             <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} aria-label="Remove file">✕</button>
           </div>
         )}
+        {file && (
+          <div className="th-more">
+            <button className="th-morebtn" onClick={() => setShowOpts((v) => !v)}>
+              ⚙ More sharing options{extras.length || publish ? ' •' : ''}
+            </button>
+            {showOpts && (
+              <div className="th-opts">
+                <div className="th-opt-title">Also send to other people</div>
+                <div className="th-people">
+                  {extras.map((p) => (
+                    <span key={p.username} className="th-person">
+                      {p.full_name}
+                      <button onClick={() => setExtras((e) => e.filter((x) => x.username !== p.username))} aria-label={`Remove ${p.full_name}`}>✕</button>
+                    </span>
+                  ))}
+                  <button className="th-add" onClick={() => setPicking(true)}>+ Add</button>
+                </div>
+                <label className="th-check">
+                  <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />
+                  Publish to the Library
+                </label>
+                <small>{publish ? 'Everyone in the ministry will be able to open it.' : 'Only the people you pick can open it.'}</small>
+              </div>
+            )}
+          </div>
+        )}
         <div className="th-bar">
           <input ref={fileRef} type="file" hidden onChange={(e) => setFile(e.target.files[0] || null)} />
           <button className="th-attach" onClick={() => fileRef.current && fileRef.current.click()} aria-label="Attach a document">📎</button>
           <input className="th-input" type="text" placeholder={file ? 'Add a message (optional)' : 'Attach a document to send…'}
             value={message} onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') send(); }} maxLength={500} />
-          <button className="btn btn-primary th-send" onClick={send} disabled={!file || busy}>{busy ? 'Sending…' : 'Send'}</button>
+          <button className="btn btn-primary th-send" onClick={send} disabled={!file || busy}>{busy ? 'Sending…' : publish ? 'Send & publish' : extras.length ? `Send to ${extras.length + 1}` : 'Send'}</button>
         </div>
       </div>
 
+      {picking && (
+        <PersonPicker
+          onClose={() => setPicking(false)}
+          onPick={(p) => {
+            if (p.username !== conversation.username) {
+              setExtras((e) => (e.some((x) => x.username === p.username) ? e : [...e, p]));
+            }
+            setPicking(false);
+          }}
+        />
+      )}
+
       <style>{`
+        .th-more { margin-bottom: 6px; }
+        .th-morebtn { border: 0; background: none; color: var(--accent); font-size: 12.5px; cursor: pointer; padding: 2px 0; }
+        .th-opts { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--bg); margin-top: 4px; }
+        .th-opt-title { font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+        .th-people { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+        .th-person { background: var(--accent-bg); border-radius: 12px; padding: 2px 4px 2px 10px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
+        .th-person button { border: 0; background: none; cursor: pointer; color: var(--text-secondary); }
+        .th-add { border: 1px dashed var(--border); background: none; border-radius: 12px; padding: 2px 10px; font-size: 12px; cursor: pointer; color: var(--accent); }
+        .th-check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+        .th-opts small { display: block; color: var(--text-tertiary); margin: 2px 0 0 24px; font-size: 12px; }
         .th-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
         .th-head b { display: block; font-size: 14.5px; }
         .th-head small { color: var(--text-tertiary); font-size: 12px; }
