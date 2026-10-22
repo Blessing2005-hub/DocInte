@@ -180,7 +180,9 @@ export default function Inbox() {
       )}
 
       <style>{`
-        .chat-shell { display: flex; height: 100%; min-height: 0; }
+        /* A fixed height (screen minus top bar and footer) keeps the search box and the
+           message bar on screen; only the lists and the messages scroll. */
+        .chat-shell { display: flex; height: calc(100vh - 112px); height: calc(100dvh - 112px); min-height: 360px; overflow: hidden; }
         .chat-list { width: 310px; flex: none; border-right: 1px solid var(--border); overflow-y: auto; background: var(--surface); }
         .chat-list-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 10px; }
         .chat-list-head h1 { font-size: 19px; }
@@ -198,7 +200,10 @@ export default function Inbox() {
         .chat-conv-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 11px; color: var(--text-tertiary); }
         .chat-badge { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 600; }
         .chat-thread { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
-        @media (max-width: 820px) { .chat-list { width: 100%; border-right: 0; } }
+        @media (max-width: 820px) {
+          .chat-list { width: 100%; border-right: 0; }
+          .chat-shell { height: calc(100vh - 106px); height: calc(100dvh - 106px); }
+        }
       `}</style>
     </div>
   );
