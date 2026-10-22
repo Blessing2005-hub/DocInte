@@ -173,7 +173,7 @@ function ProtectedShell() {
       </div>
 
       <footer className="app-footer">
-        Ministry of Industry and Commerce – Trade Measures
+        Ministry of Industry and Commerce 
       </footer>
 
       {message && (
