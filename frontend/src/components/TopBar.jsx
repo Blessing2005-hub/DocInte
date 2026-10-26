@@ -14,9 +14,18 @@ function initialsOf(name) {
     .join('');
 }
 
+function timeLabel(dateStr) {
+  const d = new Date(dateStr);
+  if (d.toDateString() === new Date().toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
 export default function TopBar({
   unread = 0,
   onUpload,
+  notifications = [],
+  onOpenChat,
+  onMarkAllRead,
   onMenuToggle,
   mobileMenuOpen = false,
 }) {
@@ -25,6 +34,8 @@ export default function TopBar({
   const menuRef = useRef(null);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [bellOpen, setBellOpen] = useState(false);
+  const bellRef = useRef(null);
   const [showPassword, setShowPassword] = useState(false);
   const [permission, setPermission] = useState(
     typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
@@ -35,9 +46,12 @@ export default function TopBar({
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setMenuOpen(false);
       }
+      if (bellRef.current && !bellRef.current.contains(event.target)) {
+        setBellOpen(false);
+      }
     }
     function handleEscape(event) {
-      if (event.key === 'Escape') setMenuOpen(false);
+      if (event.key === 'Escape') { setMenuOpen(false); setBellOpen(false); }
     }
     document.addEventListener('mousedown', handleOutsideClick);
     document.addEventListener('keydown', handleEscape);
@@ -49,7 +63,8 @@ export default function TopBar({
 
   useEffect(() => {
     setMenuOpen(false);
-  }, [location.pathname]);
+    setBellOpen(false);
+  }, [location.pathname, location.search]);
 
   function enableNotifications() {
     setMenuOpen(false);
@@ -87,14 +102,58 @@ export default function TopBar({
           </button>
         )}
 
-        <Link
-          to="/inbox"
-          className="tb-bell"
-          aria-label={unread > 0 ? `Inbox, ${unread} unread` : 'Inbox'}
-        >
-          <Icon name="bell" size={21} />
-          {unread > 0 && <span className="tb-dot">{unread > 9 ? '9+' : unread}</span>}
-        </Link>
+        <div className="tb-bellwrap" ref={bellRef}>
+          <button
+            type="button"
+            className="tb-bell"
+            onClick={() => { setBellOpen((o) => !o); setMenuOpen(false); }}
+            aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+            aria-expanded={bellOpen}
+            aria-haspopup="menu"
+          >
+            <Icon name="bell" size={21} />
+            {unread > 0 && <span className="tb-dot">{unread > 9 ? '9+' : unread}</span>}
+          </button>
+
+          {bellOpen && (
+            <div className="tb-notes" role="menu">
+              <div className="tb-notes-head">
+                <strong>Notifications</strong>
+                {notifications.length > 0 && (
+                  <button type="button" className="tb-markall" onClick={() => { onMarkAllRead && onMarkAllRead(); }}>
+                    Mark all as read
+                  </button>
+                )}
+              </div>
+              {notifications.length === 0 ? (
+                <div className="tb-notes-empty">You're all caught up.</div>
+              ) : (
+                <div className="tb-notes-list">
+                  {notifications.map((g) => (
+                    <button
+                      key={g.username}
+                      type="button"
+                      role="menuitem"
+                      className="tb-note"
+                      onClick={() => { setBellOpen(false); onOpenChat && onOpenChat(g.username); }}
+                    >
+                      <span className="tb-note-av">{initialsOf(g.name)}</span>
+                      <span className="tb-note-mid">
+                        <b>{g.name}</b>
+                        <small>{g.latest.kind === 'edit' ? '✏️ edited ' : '📄 '}{g.latest.filename}</small>
+                      </span>
+                      <span className="tb-note-meta">
+                        <span>{timeLabel(g.latest.sent_date)}</span>
+                        <span className="tb-note-count">{g.count}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <Link to="/inbox" className="tb-notes-foot" onClick={() => setBellOpen(false)}>Open Inbox</Link>
+            </div>
+          )}
+        </div>
 
         <div className="tb-account" ref={menuRef}>
           <button
@@ -156,7 +215,30 @@ export default function TopBar({
           padding: 0; background: transparent; border: none; color: #fff; cursor: pointer; flex-shrink: 0; }
         .tb-burger span { display: block; width: 22px; height: 2px; background: #fff; border-radius: 2px; }
         .tb-burger .tb-x { width: auto; height: auto; background: none; font-size: 20px; line-height: 1; }
-        .tb-bell { position: relative; color: #fff; display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; }
+        .tb-bellwrap { position: relative; flex-shrink: 0; }
+        .tb-bell { position: relative; color: #fff; display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0;
+          background: transparent; border: none; cursor: pointer; padding: 0; }
+        .tb-notes { position: absolute; top: calc(100% + 12px); right: -40px; z-index: 100; width: 340px; max-width: calc(100vw - 20px);
+          background: #fff; color: var(--text-primary); border: 1px solid var(--border); border-radius: 10px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.18); overflow: hidden; }
+        .tb-notes-head { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+        .tb-notes-head strong { font-size: 14px; }
+        .tb-markall { border: 0; background: none; color: var(--accent); font-size: 12.5px; cursor: pointer; padding: 0; font-weight: 600; }
+        .tb-notes-list { max-height: 340px; overflow-y: auto; }
+        .tb-note { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 10px 14px; border: 0;
+          border-bottom: 1px solid var(--border); background: none; cursor: pointer; font-family: inherit; color: inherit; }
+        .tb-note:hover { background: var(--surface-alt); }
+        .tb-note-av { width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--accent); color: #fff; display: grid;
+          place-items: center; font-weight: 600; font-size: 12.5px; }
+        .tb-note-mid { flex: 1; min-width: 0; }
+        .tb-note-mid b { display: block; font-size: 13.5px; }
+        .tb-note-mid small { display: block; color: var(--text-tertiary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tb-note-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 11px; color: var(--text-tertiary); }
+        .tb-note-count { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 600; }
+        .tb-notes-empty { padding: 22px 14px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+        .tb-notes-foot { display: block; text-align: center; padding: 10px; font-size: 13px; color: var(--accent); font-weight: 600;
+          text-decoration: none; border-top: 1px solid var(--border); }
+        .tb-notes-foot:hover { background: var(--surface-alt); }
         .tb-dot { position: absolute; top: 2px; right: 0; min-width: 17px; height: 17px; border-radius: 9px; padding: 0 4px;
           background: #fff; color: var(--accent); font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
         .tb-account { position: relative; flex-shrink: 0; }
