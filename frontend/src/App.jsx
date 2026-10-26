@@ -4,6 +4,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
 } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -28,8 +29,13 @@ function ProtectedShell() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const { unread, message, dismiss, refresh } =
+  const { unread, groups, message, dismiss, refresh, markAllRead } =
     useNotifications(!!user);
+
+  const navigate = useNavigate();
+  function openChat(username) {
+    navigate(username ? `/inbox?with=${encodeURIComponent(username)}` : '/inbox');
+  }
 
   const location = useLocation();
 
@@ -39,7 +45,7 @@ function ProtectedShell() {
     }, 1500);
 
     return () => window.clearTimeout(timer);
-  }, [location.pathname, refresh]);
+  }, [location.pathname, location.search, refresh]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -83,6 +89,9 @@ function ProtectedShell() {
     <div className="app-shell">
       <TopBar
         unread={unread}
+        notifications={groups}
+        onOpenChat={openChat}
+        onMarkAllRead={markAllRead}
         onUpload={openUpload}
         onMenuToggle={() =>
           setMobileMenuOpen((open) => !open)
@@ -177,14 +186,15 @@ function ProtectedShell() {
       </footer>
 
       {message && (
-        <div
+        <button
+          type="button"
           className="toast"
           role="status"
-          onClick={dismiss}
-          style={{ cursor: 'pointer' }}
+          onClick={() => { openChat(message.username); dismiss(); }}
         >
-          {message}
-        </div>
+          <span>{message.text}</span>
+          <small>Tap to open</small>
+        </button>
       )}
 
       {showUpload && (
