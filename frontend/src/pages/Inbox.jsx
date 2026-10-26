@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { REFRESH_EVENT } from '../hooks/useNotifications';
 import DocViewerModal from '../components/DocViewerModal';
 import { editFields } from '../utils/docFields';
 
@@ -34,6 +36,9 @@ export default function Inbox() {
   const [viewing, setViewing] = useState(null);
   const [showPicker, setShowPicker] = useState(false);
   const [phone, setPhone] = useState(isPhone());
+  const [params] = useSearchParams();
+  const wanted = params.get('with');
+  const locationKey = useLocation().key;
 
   useEffect(() => {
     const onResize = () => setPhone(isPhone());
@@ -82,6 +87,11 @@ export default function Inbox() {
 
   const current = conversations.find((c) => c.username === active) || null;
 
+  // A notification (or link) can ask for a particular person's conversation.
+  useEffect(() => {
+    if (wanted) setActive(wanted);
+  }, [wanted, locationKey]);
+
   // Desktop: open the newest conversation by default.
   useEffect(() => {
     if (!phone && !active && conversations.length) setActive(conversations[0].username);
@@ -91,7 +101,9 @@ export default function Inbox() {
   const unreadHere = current ? current.unread : 0;
   useEffect(() => {
     if (!current || unreadHere === 0) return;
-    api.markThreadRead(current.username).catch(() => {});
+    api.markThreadRead(current.username)
+      .catch(() => {})
+      .then(() => window.dispatchEvent(new Event(REFRESH_EVENT)));
     setItems((prev) => prev && prev.map((it) =>
       it.person_username === current.username && it.direction === 'in' ? { ...it, read: true } : it));
   }, [current?.username, unreadHere]);
