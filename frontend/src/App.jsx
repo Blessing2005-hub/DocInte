@@ -264,8 +264,10 @@ function ProtectedShell() {
         }
 
         @keyframes page-in {
-          from { opacity: 0; transform: translateY(6px); }
-          to { opacity: 1; transform: none; }
+          /* Fade only. A transform here would trap every fixed-position pop-up and
+             document window inside the page, squashing them on phones. */
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
         .app-footer {
