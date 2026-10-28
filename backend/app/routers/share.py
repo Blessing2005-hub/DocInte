@@ -95,6 +95,7 @@ def send_document(
 
     if upload_type == "private":
         set_private_access(db, document, user, people)   # access list + one inbox entry each
+        db.flush()   # sessions here don't auto-flush, so make the new inbox rows visible
         if message:
             for row in db.query(SharedDocument).filter(
                 SharedDocument.document_id == document.id, SharedDocument.kind == "share"
