@@ -146,8 +146,30 @@ def render_pdf_page(path: str, index: int) -> bytes:
         doc.close()
 
 
+LEGACY_EXTS = (".doc", ".xls", ".ppt")
+
+
+def pdf_source(path: str, ext: str):
+    """The PDF to draw pages from: the file itself, or a LibreOffice copy of an old-format file."""
+    ext = (ext or "").lower()
+    if ext == ".pdf":
+        return path
+    if ext in LEGACY_EXTS:
+        from app.services import convert_service
+        if convert_service.available():
+            return convert_service.to_pdf(path)
+    return None
+
+
 def build_preview(path: str, ext: str) -> dict:
     ext = (ext or "").lower()
+    if ext in LEGACY_EXTS:
+        try:
+            converted = pdf_source(path, ext)
+        except Exception as exc:
+            raise PreviewUnavailable("This old-format file couldn't be converted for preview. Download it to open it.") from exc
+        if converted:
+            return preview_pdf(converted)
     try:
         if ext == ".xlsx":
             return preview_xlsx(path)
