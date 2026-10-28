@@ -1,0 +1,55 @@
+# Runs the whole DocIntel system on one server:  docker compose up -d --build
+# Copy .env.example to .env first and fill in the values.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: docintel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: docintel
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docintel"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      args:
+        INSTALL_AI: ${INSTALL_AI:-false}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DOCINTEL_DATABASE_URL: postgresql://docintel:${POSTGRES_PASSWORD}@db:5432/docintel
+      DOCINTEL_JWT_SECRET: ${DOCINTEL_JWT_SECRET}
+      DOCINTEL_CORS_ORIGINS: ${SITE_URL}
+      DOCINTEL_ADMIN_EC: ${DOCINTEL_ADMIN_EC}
+      DOCINTEL_ADMIN_USERNAME: ${DOCINTEL_ADMIN_USERNAME}
+      DOCINTEL_ADMIN_PASSWORD: ${DOCINTEL_ADMIN_PASSWORD}
+      DOCINTEL_ADMIN_NAME: ${DOCINTEL_ADMIN_NAME:-Administrator}
+      DOCINTEL_ADMIN_DEPARTMENT: ${DOCINTEL_ADMIN_DEPARTMENT:-ICT}
+      DOCINTEL_AI_ENABLED: ${DOCINTEL_AI_ENABLED:-false}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    volumes:
+      - files:/data
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${SITE_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  dbdata:
+  files:
