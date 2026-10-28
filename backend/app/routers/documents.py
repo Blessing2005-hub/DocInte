@@ -31,7 +31,8 @@ from app.services.permission_service import (
     can_view_document,
 )
 from app.services.access_service import can_manage_access, current_people, set_private_access
-from app.services.preview_service import PreviewUnavailable, build_preview, render_pdf_page
+from app.services import convert_service
+from app.services.preview_service import PreviewUnavailable, build_preview, pdf_source, render_pdf_page
 from app.services.storage_service import delete_file, save_upload
 from app.services.versioning_service import notify_of_edit, record_initial_version
 
@@ -378,11 +379,14 @@ def preview_page(page: int, document_id: str, db: Session = Depends(get_db), use
     if not can_view_document(db, user, document):
         raise HTTPException(status_code=403, detail="You don't have access to this document.")
 
-    if (document.file_type or "").lower() != ".pdf" or not os.path.exists(document.file_path):
+    if not os.path.exists(document.file_path):
         raise HTTPException(status_code=404, detail="Page not available.")
 
     try:
-        png = render_pdf_page(document.file_path, page - 1)
+        source = pdf_source(document.file_path, document.file_type)   # the PDF itself, or a converted old-format file
+        if not source:
+            raise PreviewUnavailable("Page not available.")
+        png = render_pdf_page(source, page - 1)
     except PreviewUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception:
@@ -534,7 +538,9 @@ def delete_document(document_id: str, db: Session = Depends(get_db), user: User 
     # Every version owns its own file; remove them all with the document.
     versions = db.query(DocumentVersion).filter(DocumentVersion.document_id == document.id).all()
     for v in versions:
+        convert_service.drop_cached(v.file_path)
         delete_file(v.file_path)
+    convert_service.drop_cached(document.file_path)
     delete_file(document.file_path)
     db.query(DocumentVersion).filter(DocumentVersion.document_id == document.id).delete()
     db.query(DocumentChunk).filter(DocumentChunk.document_id == document.id).delete()
